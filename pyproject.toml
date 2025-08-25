@@ -1,0 +1,59 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lynx-codex"
+version = "1.0.0"
+description = "Lynx: Intelligent code-base summarization toolkit powered by AI."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GNU General Public License (GPL)" }
+authors = [{ name = "Gentry Rolofson", email = "grolofson@xdarkicex.codes" }]
+keywords = [
+    "code summarization",
+    "AI",
+    "documentation",
+    "langchain",
+    "perplexity",
+    "openai",
+    "anthropic",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Documentation",
+]
+
+dependencies = [
+    "langchain-perplexity>=0.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langchain-anthropic>=0.1.0",
+    "tiktoken>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "black>=24.0", "isort>=5.12", "flake8>=6.1"]
+
+[project.urls]
+Homepage = "https://github.com/xDarkicex/lynx"
+Documentation = "https://github.com/xDarkicex/lynx#readme"
+Source = "https://github.com/xDarkicex/lynx"
+Issues = "https://github.com/xDarkicex/lynx/issues"
+
+[project.scripts]
+lynx = "lynx.cli:main"
+
+[tool.setuptools.package-dir]
+"" = "."
+
+[tool.setuptools.exclude-package-data]
+"lynx" = ["*.pyc", "*__pycache__*"]
