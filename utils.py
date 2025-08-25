@@ -168,6 +168,22 @@ def validate_config(config: Dict) -> List[str]:
             if not isinstance(val, int) or val < min_val or val > max_val:
                 issues.append(f"'{field}' must be integer between {min_val} and {max_val}")
     
+    # Validate plugin system configuration if present
+    if "plugin_system" in config:
+        plugin_config = config["plugin_system"]
+        if not isinstance(plugin_config, dict):
+            issues.append("'plugin_system' must be a dictionary")
+        else:
+            if "enabled" in plugin_config and not isinstance(plugin_config["enabled"], bool):
+                issues.append("'plugin_system.enabled' must be a boolean")
+            if "auto_discover" in plugin_config and not isinstance(plugin_config["auto_discover"], bool):
+                issues.append("'plugin_system.auto_discover' must be a boolean")
+            
+            # Validate plugins if they exist
+            if "plugins" in plugin_config:
+                if not isinstance(plugin_config["plugins"], dict):
+                    issues.append("'plugin_system.plugins' must be a dictionary")
+    
     return issues
 
 def load_config_file(config_path: str) -> Dict:
@@ -244,6 +260,26 @@ def create_default_config_template(
         Dictionary containing the default configuration
     """
     
+    # Plugin system configuration
+    plugin_config = {
+        "plugin_system": {
+            "enabled": True,
+            "auto_discover": True,
+            "plugins": {
+                "language_bridge": {
+                    "enabled": True,
+                    "priority": 50,
+                    "options": {
+                        "max_elements_per_file": 200,
+                        "analyze_dependencies": True,
+                        "cache_parsed_results": True,
+                        "enable_semantic_hints": True
+                    }
+                }
+            }
+        }
+    }
+    
     # Base configuration shared by all types
     base_config = {
         "chunk_size": 2000,
@@ -301,7 +337,7 @@ def create_default_config_template(
                 "max_tokens": 100000
             })
         
-        config = {**base_config, "models": models}
+        config = {**base_config, **plugin_config, "models": models}
         
     elif config_type == "single-model":
         # Legacy single model configuration (backwards compatible)
@@ -316,6 +352,7 @@ def create_default_config_template(
     elif config_type == "minimal":
         # Minimal configuration for quick setup
         config = {
+            **plugin_config,
             "models": [{
                 "provider": "perplexity",
                 "model": "sonar-large-chat",

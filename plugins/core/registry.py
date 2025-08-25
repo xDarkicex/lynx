@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 class PluginRegistry:
     def __init__(self):
         self._by_name: Dict[str, Type[Plugin]] = {}
+        self._register_builtin_plugins()
+
+    def _register_builtin_plugins(self):
+        """Register built-in plugins automatically."""
+        try:
+            # Import and register the language bridge plugin
+            from .builtins.language_bridge import LanguageParsingPlugin
+            self.register(LanguageParsingPlugin)
+            logger.info("Registered built-in language bridge plugin")
+        except ImportError as e:
+            logger.warning(f"Could not register language bridge plugin: {e}")
 
     def register(self, plugin_cls: Type[Plugin]) -> None:
         name = getattr(plugin_cls, "name", plugin_cls.__name__)

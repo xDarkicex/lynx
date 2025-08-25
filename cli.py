@@ -158,6 +158,11 @@ Examples:
   # Validate environment setup
   lynx --validate-env
 
+  # Plugin management
+  lynx --list-plugins
+  lynx /path/to/codebase --enable-plugins
+  lynx /path/to/codebase --disable-plugins
+
 Environment Variables:
   PPLX_API_KEY or PERPLEXITY_API_KEY - Perplexity API key
   OPENAI_API_KEY - OpenAI API key  
@@ -244,6 +249,25 @@ Configuration Types:
         help='Disable fallback to other AI providers'
     )
     
+    # Plugin options
+    parser.add_argument(
+        '--enable-plugins',
+        action='store_true',
+        help='Enable plugin system (default: enabled in config)'
+    )
+    
+    parser.add_argument(
+        '--disable-plugins',
+        action='store_true',
+        help='Disable plugin system'
+    )
+    
+    parser.add_argument(
+        '--list-plugins',
+        action='store_true',
+        help='List available plugins and exit'
+    )
+    
     # Utility options
     parser.add_argument(
         '--create-config',
@@ -297,6 +321,15 @@ Configuration Types:
     
     try:
         # Handle utility commands first
+        if args.list_plugins:
+            from lynx.plugins.core.registry import REGISTRY
+            print("Available plugins:")
+            for plugin_name in REGISTRY.available():
+                plugin_cls = REGISTRY.get(plugin_name)
+                version = getattr(plugin_cls, 'version', 'unknown')
+                print(f"  - {plugin_name} (v{version})")
+            return
+            
         if args.validate_env:
             validate_environment()
             return
@@ -364,6 +397,12 @@ Configuration Types:
         if args.disable_fallback and hasattr(config, 'fallback_enabled'):
             config.fallback_enabled = False
         
+        # Update plugin config based on CLI flags
+        if args.enable_plugins:
+            config.plugin_system.enabled = True
+        elif args.disable_plugins:
+            config.plugin_system.enabled = False
+        
         # Validate configuration
         config.validate()
         
@@ -389,6 +428,14 @@ Configuration Types:
         # Show fallback info if available
         if 'fallbacks_used' in results['stats']:
             print(f"🔄 Fallbacks used: {results['stats']['fallbacks_used']}")
+        
+        # Show plugin info if available
+        if 'plugins_enabled' in results['stats']:
+            plugin_status = "enabled" if results['stats']['plugins_enabled'] else "disabled"
+            print(f"🔌 Plugins: {plugin_status}")
+            
+            if results.get('plugin_data'):
+                print(f"📦 Plugin data collected: {len(results['plugin_data'])} items")
         
         if usage_stats.get('providers_configured', 1) > 1:
             print(f"🏷️  Primary provider: {usage_stats['primary_provider']}")

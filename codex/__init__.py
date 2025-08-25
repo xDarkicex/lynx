@@ -3,6 +3,7 @@
 from .config import CodexConfig
 from .summarizer import CodexSummarizer
 from ..exceptions import LynxError, ProcessingError
+from ..plugins.core.registry import REGISTRY
 
 class Codex:
     """Main Codex class for codebase summarization."""
@@ -11,6 +12,10 @@ class Codex:
         """Initialize Codex with configuration."""
         self.config = config
         self._summarizer = None
+        
+        # Auto-discover plugins if enabled
+        if config.plugin_system.enabled and config.plugin_system.auto_discover:
+            REGISTRY.discover_entry_points()
     
     @classmethod
     def New(cls, cfg):

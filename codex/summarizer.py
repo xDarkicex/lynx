@@ -11,6 +11,8 @@ from ..exceptions import ProcessingError
 from .config import CodexConfig
 from .chunker import SemanticChunker, Chunk
 from .ai_interface import AIInterface, SummaryRequest
+from ..plugins.core.manager import PluginManager
+from ..plugins.core.base import PluginContext, HookPoint
 
 logger = logging.getLogger(__name__)
 
@@ -25,27 +27,42 @@ class CodexSummarizer:
             model=config.get_primary_model().model
         )
         self.ai_interface = AIInterface(config)
+        
+        # Initialize plugin system
+        if config.plugin_system.enabled:
+            enabled_plugins = config.get_enabled_plugins()
+            plugin_options = {name: config.plugin_system.plugins[name].options 
+                            for name in enabled_plugins 
+                            if name in config.plugin_system.plugins}
+            self.plugin_manager = PluginManager.from_config(enabled_plugins, plugin_options)
+        else:
+            self.plugin_manager = None
+            
         self.stats = {
             'files_processed': 0,
             'chunks_created': 0,
             'errors': [],
             'fallbacks_used': 0,
             'start_time': None,
-            'end_time': None
+            'end_time': None,
+            'plugin_errors': []
         }
     
     def summarize_codebase(self) -> Dict[str, Any]:
-        """
-        Main entry point for codebase summarization.
-        
-        Returns:
-            Dictionary containing summary and processing statistics
-        """
+        """Main entry point for codebase summarization with plugin hooks."""
         self.stats['start_time'] = datetime.now()
         
         try:
+            # Create plugin context
+            ctx = PluginContext(config=self.config)
+            
             # Step 1: Scan directory for files
             logger.info(f"Scanning codebase: {self.config.codebase_path}")
+            
+            # BEFORE_SCAN hook
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.BEFORE_SCAN, ctx)
+            
             files = scan_directory(
                 self.config.codebase_path,
                 include_patterns=self.config.include_patterns,
@@ -56,21 +73,46 @@ class CodexSummarizer:
             if not files:
                 raise ProcessingError("No suitable files found in codebase")
             
+            # Update context with files and emit AFTER_SCAN
+            ctx.state['files'] = files
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.AFTER_SCAN, ctx)
+            
             logger.info(f"Found {len(files)} files to process")
             logger.info(f"AI providers configured: {len(self.config.models)} (fallback {'enabled' if self.config.fallback_enabled else 'disabled'})")
             
             # Step 2: Process files in parallel
-            file_summaries = self._process_files_parallel(files)
+            file_summaries = self._process_files_parallel(files, ctx)
             
             # Step 3: Aggregate into master summary
             logger.info("Aggregating summaries...")
+            
+            # BEFORE_AGGREGATE hook
+            ctx.file_summaries = file_summaries
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.BEFORE_AGGREGATE, ctx)
+            
             master_summary = self._create_master_summary(file_summaries, files)
+            
+            # AFTER_AGGREGATE hook  
+            ctx.master_summary = master_summary
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.AFTER_AGGREGATE, ctx)
             
             # Step 4: Generate output
             output_content = self._format_output(master_summary, file_summaries)
             
+            # BEFORE_OUTPUT hook
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.BEFORE_OUTPUT, ctx)
+            
             # Step 5: Save results
             self._save_output(output_content)
+            
+            # AFTER_OUTPUT hook
+            ctx.output_path = self.config.output_dest
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.AFTER_OUTPUT, ctx)
             
             self.stats['end_time'] = datetime.now()
             
@@ -78,23 +120,31 @@ class CodexSummarizer:
                 'summary': master_summary,
                 'file_summaries': file_summaries,
                 'stats': self._get_final_stats(),
-                'output_path': self.config.output_dest
+                'output_path': self.config.output_dest,
+                'plugin_data': ctx.state.get('plugin_results', {})
             }
             
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
             self.stats['errors'].append(str(e))
+            
+            # ON_ERROR hook
+            if self.plugin_manager:
+                error_ctx = PluginContext(config=self.config)
+                error_ctx.state['error'] = str(e)
+                self.plugin_manager.emit(HookPoint.ON_ERROR, error_ctx)
+            
             self.stats['end_time'] = datetime.now()
             raise ProcessingError(f"Codebase summarization failed: {e}")
     
-    def _process_files_parallel(self, files: List[FileInfo]) -> Dict[str, str]:
-        """Process multiple files in parallel using thread pool."""
+    def _process_files_parallel(self, files: List[FileInfo], ctx: PluginContext) -> Dict[str, str]:
+        """Process multiple files in parallel using thread pool with plugin context."""
         file_summaries = {}
         
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
             # Submit all file processing tasks
             future_to_file = {
-                executor.submit(self._process_single_file, file_info): file_info
+                executor.submit(self._process_single_file, file_info, ctx): file_info
                 for file_info in files
             }
             
@@ -117,8 +167,8 @@ class CodexSummarizer:
         
         return file_summaries
     
-    def _process_single_file(self, file_info: FileInfo) -> str:
-        """Process a single file and return its summary."""
+    def _process_single_file(self, file_info: FileInfo, ctx: PluginContext) -> str:
+        """Process a single file with plugin hooks."""
         try:
             # Read file content
             with open(file_info.path, 'r', encoding=file_info.encoding) as f:
@@ -128,19 +178,27 @@ class CodexSummarizer:
             if not content.strip():
                 return "Empty file"
             
-            # Check if file needs chunking based on accurate token count
+            # Update context for this file
+            ctx.file_info = file_info
+            ctx.content = content
+            
+            # Check if file needs chunking
             primary_model = self.config.get_primary_model().model
             file_tokens = count_tokens(content, primary_model)
             if file_tokens > self.config.chunk_size * 4:
-                return self._process_large_file(file_info, content)
+                return self._process_large_file(file_info, content, ctx)
             else:
-                return self._process_regular_file(file_info, content)
+                return self._process_regular_file(file_info, content, ctx)
                 
         except Exception as e:
             raise ProcessingError(f"Failed to process file {file_info.relative_path}: {e}")
     
-    def _process_regular_file(self, file_info: FileInfo, content: str) -> str:
-        """Process a regular-sized file."""
+    def _process_regular_file(self, file_info: FileInfo, content: str, ctx: PluginContext) -> str:
+        """Process a regular-sized file with plugin hooks."""
+        # BEFORE_AI_REQUEST hook
+        if self.plugin_manager:
+            self.plugin_manager.emit(HookPoint.BEFORE_AI_REQUEST, ctx)
+        
         request = SummaryRequest(
             content=content,
             file_path=file_info.relative_path,
@@ -149,7 +207,13 @@ class CodexSummarizer:
             metadata={'size': file_info.size, 'extension': file_info.extension}
         )
         
+        ctx.request = request
         response = self.ai_interface.summarize_file(request)
+        ctx.response = response
+        
+        # AFTER_AI_RESPONSE hook
+        if self.plugin_manager:
+            self.plugin_manager.emit(HookPoint.AFTER_AI_RESPONSE, ctx)
         
         # Track fallback usage
         if response.fallback_used:
@@ -161,16 +225,34 @@ class CodexSummarizer:
         
         return response.summary
     
-    def _process_large_file(self, file_info: FileInfo, content: str) -> str:
-        """Process a large file by chunking it first."""
+    def _process_large_file(self, file_info: FileInfo, content: str, ctx: PluginContext) -> str:
+        """Process a large file by chunking it first with plugin hooks."""
+        # BEFORE_CHUNK hook
+        if self.plugin_manager:
+            self.plugin_manager.emit(HookPoint.BEFORE_CHUNK, ctx)
+        
         # Create semantic chunks
         chunks = self.chunker.chunk_file(file_info, content)
         self.stats['chunks_created'] += len(chunks)
         
-        # Summarize each chunk
-        chunk_summaries = []
+        # AFTER_CHUNK hook
+        ctx.chunks = chunks
+        if self.plugin_manager:
+            self.plugin_manager.emit(HookPoint.AFTER_CHUNK, ctx)
         
+        # Process chunks with enhanced context from plugins
+        chunk_summaries = []
         for chunk in chunks:
+            # Update context for this chunk
+            chunk_ctx = PluginContext(config=self.config)
+            chunk_ctx.file_info = file_info
+            chunk_ctx.content = chunk.content
+            chunk_ctx.chunks = [chunk]
+            
+            # Use any plugin-enhanced context
+            if 'chunk_hints' in ctx.state and file_info.relative_path in ctx.state['chunk_hints']:
+                chunk.metadata.update(ctx.state['chunk_hints'][file_info.relative_path])
+            
             request = SummaryRequest(
                 content=chunk.content,
                 file_path=f"{file_info.relative_path}:{chunk.start_line}-{chunk.end_line}",
@@ -179,7 +261,17 @@ class CodexSummarizer:
                 metadata=chunk.metadata
             )
             
+            # BEFORE_AI_REQUEST hook for chunk
+            chunk_ctx.request = request
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.BEFORE_AI_REQUEST, chunk_ctx)
+            
             response = self.ai_interface.summarize_file(request)
+            chunk_ctx.response = response
+            
+            # AFTER_AI_RESPONSE hook for chunk
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.AFTER_AI_RESPONSE, chunk_ctx)
             
             # Track fallback usage
             if response.fallback_used:
@@ -340,11 +432,19 @@ class CodexSummarizer:
         return "Unknown"
     
     def _get_final_stats(self) -> Dict[str, Any]:
-        """Get final processing statistics."""
+        """Get final processing statistics including plugin info."""
         usage_stats = self.ai_interface.get_usage_stats()
         
-        return {
+        stats = {
             **self.stats,
             'processing_time': self._get_processing_time(),
             'ai_usage': usage_stats
         }
+        
+        if self.plugin_manager:
+            stats['plugins_enabled'] = True
+            stats['plugin_errors'] = self.stats.get('plugin_errors', [])
+        else:
+            stats['plugins_enabled'] = False
+            
+        return stats
