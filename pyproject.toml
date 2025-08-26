@@ -1,4 +1,3 @@
-# pyproject.toml
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -6,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lynx-codex"
 version = "1.0.0"
-description = "Lynx: Intelligent code-base summarization toolkit powered by AI."
+description = "Lynx Codex: AI-powered codebase summarization with multi-model fallback."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "GNU General Public License (GPL)" }
+license = { file = "LICENSE" }
 authors = [{ name = "Gentry Rolofson", email = "grolofson@xdarkicex.codes" }]
 keywords = [
     "code summarization",
@@ -32,16 +31,21 @@ classifiers = [
     "Topic :: Software Development :: Documentation",
 ]
 
+# Align with requirements.txt and imports used in the codebase
 dependencies = [
     "langchain-perplexity>=0.1.0",
-    "langchain-core>=0.1.0",
+    "langchain-core>=0.2.0",
     "langchain-openai>=0.1.0",
     "langchain-anthropic>=0.1.0",
     "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]
+# Developer tooling
 dev = ["pytest>=7.0", "black>=24.0", "isort>=5.12", "flake8>=6.1"]
+
+# Optional integration extras (Dynamiq integration lives under lynx.integrations/*)
+integrations = ["dynamiq"]
 
 [project.urls]
 Homepage = "https://github.com/xDarkicex/lynx"
@@ -52,8 +56,16 @@ Issues = "https://github.com/xDarkicex/lynx/issues"
 [project.scripts]
 lynx = "lynx.cli:main"
 
-[tool.setuptools.package-dir]
-"" = "."
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
 
+# Ensure the 'lynx' package and its subpackages are discovered reliably
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["lynx*"]
+exclude = ["tests*", "examples*", "docs*"]
+
+# Keep bytecode and cache junk out of wheels/sdists
 [tool.setuptools.exclude-package-data]
 "lynx" = ["*.pyc", "*__pycache__*"]
