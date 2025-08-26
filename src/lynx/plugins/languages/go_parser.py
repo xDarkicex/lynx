@@ -1,7 +1,7 @@
 """Comprehensive Go language parser."""
 
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import BaseLanguageParser, ParsedElement, DependencyInfo, ElementType, Visibility
 
 class GoParser(BaseLanguageParser):

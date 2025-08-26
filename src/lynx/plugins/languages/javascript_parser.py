@@ -1,7 +1,7 @@
 """Comprehensive JavaScript language parser with modern ES6+ support."""
 
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import BaseLanguageParser, ParsedElement, DependencyInfo, ElementType, Visibility
 
 class JavaScriptParser(BaseLanguageParser):

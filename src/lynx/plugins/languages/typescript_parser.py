@@ -1,7 +1,7 @@
 """Comprehensive TypeScript language parser extending JavaScript support."""
 
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .javascript_parser import JavaScriptParser
 from .base import ParsedElement, DependencyInfo, ElementType, Visibility
 

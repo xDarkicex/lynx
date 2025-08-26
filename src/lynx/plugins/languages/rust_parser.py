@@ -1,7 +1,7 @@
 """Comprehensive Rust language parser with advanced pattern matching."""
 
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import BaseLanguageParser, ParsedElement, DependencyInfo, ElementType, Visibility
 
 class RustParser(BaseLanguageParser):
