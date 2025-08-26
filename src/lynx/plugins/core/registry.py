@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 class PluginRegistry:
     def __init__(self):
         self._by_name: Dict[str, Type[Plugin]] = {}
-        self._register_builtin_plugins()
+        self._builtin_registered = False
 
-    def _register_builtin_plugins(self):
-        """Register built-in plugins automatically."""
+    def _ensure_builtin_plugins_registered(self):
+        """Ensure built-in plugins are registered (called lazily)."""
+        if self._builtin_registered:
+            return
+            
         try:
             # Import and register the language bridge plugin
             from .builtins.language_bridge import LanguageParsingPlugin
@@ -27,15 +30,19 @@ class PluginRegistry:
             logger.info("Registered built-in language bridge plugin")
         except ImportError as e:
             logger.warning(f"Could not register language bridge plugin: {e}")
+        
+        self._builtin_registered = True
 
     def register(self, plugin_cls: Type[Plugin]) -> None:
         name = getattr(plugin_cls, "name", plugin_cls.__name__)
         self._by_name[name] = plugin_cls
 
     def get(self, name: str) -> Optional[Type[Plugin]]:
+        self._ensure_builtin_plugins_registered()
         return self._by_name.get(name)
 
     def available(self) -> List[str]:
+        self._ensure_builtin_plugins_registered()
         return sorted(self._by_name.keys())
 
     def discover_entry_points(self, group: str = "lynx.plugins") -> None:
@@ -49,4 +56,5 @@ class PluginRegistry:
             except Exception as e:
                 logger.warning(f"Failed to load plugin {ep.name}: {e}")
 
+# Global registry instance - now safe from circular imports
 REGISTRY = PluginRegistry()
