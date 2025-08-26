@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 
-**Lynx Codex** is an intelligent codebase summarization toolkit that leverages artificial intelligence to automatically analyze, document, and summarize software projects. Built with multi-model fallback support and semantic code understanding, Lynx transforms complex codebases into comprehensive, readable documentation.
+**Lynx Codex** is an intelligent codebase summarization toolkit that leverages artificial intelligence to automatically analyze, document, and summarize software projects. Built with multi-model fallback support, semantic code understanding, and an extensible plugin system, Lynx transforms complex codebases into comprehensive, readable documentation.
 
 ## Features
 
@@ -15,8 +15,9 @@
 
 ### Intelligent Code Analysis
 - **Semantic Chunking**: Respects code structure (functions, classes, modules)
-- **Language-Aware**: Optimized parsing for Python, Rust, Go, JavaScript, TypeScript, Java, C/C++
+- **Language-Aware**: Optimized parsing for Bash, C, C++, C#, CSS, Dart (Flutter), Go, HTML, Java, JavaScript, Kotlin, Next.js, PHP, Python, React, Ruby, Rust, SQL, Swift, TypeScript, and generic fallback
 - **Context Preservation**: Maintains code relationships across large files
+- **Plugin System**: Extensible architecture with built-in plugins for enhanced parsing and analysis
 
 ### Flexible Integration
 - **CLI Tool**: Full-featured command-line interface
@@ -29,6 +30,22 @@
 - **Error Handling**: Robust error recovery and detailed logging
 - **Configuration Management**: Flexible config system with smart defaults
 - **Comprehensive Metrics**: Detailed processing statistics and cost tracking
+
+## Plugin System
+
+Lynx features a modular plugin system that allows for easy extension of its core functionality. Plugins can enhance code parsing, add custom analysis steps, or integrate with external tools.
+
+### Built-in Plugins
+- **Language Bridge**: Provides advanced, language-specific parsing for semantic understanding and element extraction across supported languages.
+
+### Enabling Plugins
+Plugins are enabled by default. Use CLI flags or configuration to manage them:
+- `--enable-plugins`: Explicitly enable the plugin system
+- `--disable-plugins`: Disable all plugins
+- `--list-plugins`: List available plugins and exit
+
+### Custom Plugins
+Develop custom plugins by extending the base plugin class. Register them via the plugin registry for seamless integration.
 
 ## Quick Start
 
@@ -191,6 +208,11 @@ lynx /path/to/codebase \
   --no-semantic-chunking \
   --no-metrics \
   --disable-fallback
+
+# Plugin options
+lynx /path/to/codebase \
+  --enable-plugins \
+  --list-plugins
 ```
 
 ### Dynamiq Integration
@@ -291,6 +313,29 @@ results = workflow.run(input_data)
 }
 ```
 
+### Plugin Configuration
+
+```json
+{
+  "plugin_system": {
+    "enabled": true,
+    "auto_discover": true,
+    "plugins": {
+      "language_bridge": {
+        "enabled": true,
+        "priority": 50,
+        "options": {
+          "max_elements_per_file": 200,
+          "analyze_dependencies": true,
+          "cache_parsed_results": true,
+          "enable_semantic_hints": true
+        }
+      }
+    }
+  }
+}
+```
+
 ### Output Configuration
 
 ```json
@@ -369,13 +414,12 @@ pip install -e ".[dev]"
 pytest
 
 # Format code
-black lynx/
-isort lynx/
+black src/lynx/
+isort src/lynx/
 ```
 
 ### Roadmap
 
-- Additional language support (Ruby, PHP, Swift)
 - Web interface for interactive analysis
 - Integration with popular IDEs (VS Code, IntelliJ, etc.)
 - Advanced visualization features
