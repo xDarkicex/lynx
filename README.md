@@ -391,7 +391,7 @@ isort lynx/
 
 ### Roadmap
 
-- Additional language support (Ruby, PHP, Swift)
+- Additional language support (R, Zig, ObjectC, NoSQL, Perl, scss, Dart, Scala, D#, Odin)
 - Web interface for interactive analysis
 - Integration with popular IDEs (VS Code, IntelliJ, etc.)
 - Advanced visualization features

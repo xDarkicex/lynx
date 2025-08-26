@@ -402,7 +402,7 @@ def create_default_config_template(
         except Exception as e:
             logger.error(f"Failed to save config template: {e}")
     
-    return config
+    return {k: v for k, v in config.items() if not k.startswith('_')}
 
 def create_config_from_environment() -> Dict:
     """

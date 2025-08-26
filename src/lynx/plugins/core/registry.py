@@ -3,11 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Dict, Type, List, Optional
 from importlib import import_module
+
 try:
     # Python 3.10+: stdlib
     from importlib.metadata import entry_points
-except Exception:
-    entry_points = None
+except ImportError:
+    try:
+        # Fallback for older Python versions
+        from importlib_metadata import entry_points
+    except ImportError:
+        entry_points = None
 
 from .base import Plugin
 
@@ -46,15 +51,38 @@ class PluginRegistry:
         return sorted(self._by_name.keys())
 
     def discover_entry_points(self, group: str = "lynx.plugins") -> None:
+        """Discover plugins from entry points with compatibility for different importlib_metadata versions."""
         if not entry_points:
+            logger.debug("Entry points not available, skipping plugin discovery")
             return
-        for ep in entry_points().get(group, []):
-            try:
-                plugin_cls = ep.load()
-                self.register(plugin_cls)
-                logger.info(f"Registered plugin via entry point: {ep.name}")
-            except Exception as e:
-                logger.warning(f"Failed to load plugin {ep.name}: {e}")
+        
+        try:
+            # Try the new API first (importlib_metadata >= 3.6)
+            eps = entry_points()
+            
+            # Handle different return types
+            if hasattr(eps, 'select'):
+                # New API: entry_points().select(group=group_name)
+                discovered_eps = eps.select(group=group)
+            elif hasattr(eps, 'get'):
+                # Old API: entry_points().get(group_name, [])
+                discovered_eps = eps.get(group, [])
+            else:
+                # Very old API or different implementation
+                # Try to access as dict-like
+                discovered_eps = eps.get(group, []) if hasattr(eps, 'get') else []
+            
+            # Register discovered plugins
+            for ep in discovered_eps:
+                try:
+                    plugin_cls = ep.load()
+                    self.register(plugin_cls)
+                    logger.info(f"Registered plugin via entry point: {ep.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to load plugin {ep.name}: {e}")
+                    
+        except Exception as e:
+            logger.warning(f"Entry point discovery failed: {e}")
 
 # Global registry instance - now safe from circular imports
 REGISTRY = PluginRegistry()
