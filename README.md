@@ -4,7 +4,13 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 
-**Lynx Codex** is an intelligent codebase summarization toolkit that leverages artificial intelligence to automatically analyze, document, and summarize software projects. Built with multi-model fallback support, semantic code understanding, and an extensible plugin system, Lynx transforms complex codebases into comprehensive, readable documentation.
+**Lynx Codex** is an intelligent codebase summarization toolkit that leverages artificial intelligence to automatically analyze, document, and summarize software projects. Built with multi-model fallback support and semantic code understanding, Lynx transforms complex codebases into comprehensive, readable documentation.
+
+## License and Commercial Use
+
+Lynx Codex is provided under the GNU GPL v3 license for open source and personal use. **Commercial, proprietary, or SaaS usage (including internal company use or integrations beyond personal development) requires a commercial license. [Contact us](mailto:grolofson@xdarkicex.codes) for licensing details.**
+
+Solo developers and hobbyists are encouraged to use the open source version freely! See [LICENSE](./LICENSE) for complete terms.
 
 ## Features
 
@@ -15,9 +21,8 @@
 
 ### Intelligent Code Analysis
 - **Semantic Chunking**: Respects code structure (functions, classes, modules)
-- **Language-Aware**: Optimized parsing for Bash, C, C++, C#, CSS, Dart (Flutter), Go, HTML, Java, JavaScript, Kotlin, Next.js, PHP, Python, React, Ruby, Rust, SQL, Swift, TypeScript, and generic fallback
+- **Language-Aware**: Optimized parsing for Python, Rust, Go, JavaScript, TypeScript, Java, C/C++
 - **Context Preservation**: Maintains code relationships across large files
-- **Plugin System**: Extensible architecture with built-in plugins for enhanced parsing and analysis
 
 ### Flexible Integration
 - **CLI Tool**: Full-featured command-line interface
@@ -30,22 +35,6 @@
 - **Error Handling**: Robust error recovery and detailed logging
 - **Configuration Management**: Flexible config system with smart defaults
 - **Comprehensive Metrics**: Detailed processing statistics and cost tracking
-
-## Plugin System
-
-Lynx features a modular plugin system that allows for easy extension of its core functionality. Plugins can enhance code parsing, add custom analysis steps, or integrate with external tools.
-
-### Built-in Plugins
-- **Language Bridge**: Provides advanced, language-specific parsing for semantic understanding and element extraction across supported languages.
-
-### Enabling Plugins
-Plugins are enabled by default. Use CLI flags or configuration to manage them:
-- `--enable-plugins`: Explicitly enable the plugin system
-- `--disable-plugins`: Disable all plugins
-- `--list-plugins`: List available plugins and exit
-
-### Custom Plugins
-Develop custom plugins by extending the base plugin class. Register them via the plugin registry for seamless integration.
 
 ## Quick Start
 
@@ -208,11 +197,6 @@ lynx /path/to/codebase \
   --no-semantic-chunking \
   --no-metrics \
   --disable-fallback
-
-# Plugin options
-lynx /path/to/codebase \
-  --enable-plugins \
-  --list-plugins
 ```
 
 ### Dynamiq Integration
@@ -313,29 +297,6 @@ results = workflow.run(input_data)
 }
 ```
 
-### Plugin Configuration
-
-```json
-{
-  "plugin_system": {
-    "enabled": true,
-    "auto_discover": true,
-    "plugins": {
-      "language_bridge": {
-        "enabled": true,
-        "priority": 50,
-        "options": {
-          "max_elements_per_file": 200,
-          "analyze_dependencies": true,
-          "cache_parsed_results": true,
-          "enable_semantic_hints": true
-        }
-      }
-    }
-  }
-}
-```
-
 ### Output Configuration
 
 ```json
@@ -382,12 +343,22 @@ Generate code documentation for compliance requirements, create audit trails for
 
 ## Commercial Use and Support
 
-### Open Source
-Lynx Codex is licensed under GNU GPL v3.0, making it free for open source projects and personal use.
+### Open Source License
+Lynx Codex is licensed under GNU GPL v3.0 for open source projects, personal use, and educational purposes. Individual developers and hobbyists are welcome to use, modify, and contribute to the project under these terms.
 
-### Commercial Licensing
-For commercial use, enterprise support, and custom integrations:
+### Commercial Licensing Required
+**If you, your company, or your clients are running Lynx Codex in production environments, as a service (SaaS/API), or as part of proprietary projects, you must secure a commercial license before deployment.** This includes:
 
+- Internal enterprise usage within organizations
+- SaaS or API service offerings
+- Integration into proprietary software products
+- Commercial consulting or service delivery
+- Any usage that generates revenue or supports business operations
+
+### Enterprise Support and Services
+For commercial licensing, enterprise support, and custom integrations:
+
+- **Commercial Licensing**: GPL-free licensing for proprietary use
 - **Professional Support**: Priority bug fixes and feature requests
 - **Custom Integrations**: Tailored solutions for enterprise workflows  
 - **Training and Consulting**: Team training and implementation consulting
@@ -414,12 +385,13 @@ pip install -e ".[dev]"
 pytest
 
 # Format code
-black src/lynx/
-isort src/lynx/
+black lynx/
+isort lynx/
 ```
 
 ### Roadmap
 
+- Additional language support (Ruby, PHP, Swift)
 - Web interface for interactive analysis
 - Integration with popular IDEs (VS Code, IntelliJ, etc.)
 - Advanced visualization features
@@ -442,15 +414,19 @@ isort src/lynx/
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for complete details.
+This project is licensed under the GNU General Public License v3.0 for open source and personal use. See the [LICENSE](LICENSE) file for complete terms.
 
-### GPL Summary
-- **Commercial Use**: Allowed with source code disclosure requirements
+### Commercial Usage Notice
+**Commercial, proprietary, or SaaS deployments require a separate commercial license.** The GPL v3.0 license does not permit proprietary use, internal company deployment, or commercial service offerings without source code disclosure requirements.
+
+### GPL v3.0 Summary (Open Source Use Only)
+- **Open Source Use**: Full rights for open source projects with source disclosure
+- **Personal Use**: Free for individual developers and hobbyists
 - **Modification**: Allowed with source code disclosure requirements
 - **Distribution**: Allowed with source code disclosure requirements
-- **Private Use**: Modifications must be disclosed if distributed publicly
+- **Commercial Restriction**: Proprietary use requires separate commercial licensing
 
-For commercial licensing without GPL restrictions, please contact our team.
+For commercial licensing without GPL restrictions and source code disclosure requirements, please contact our team.
 
 ## Acknowledgments
 
