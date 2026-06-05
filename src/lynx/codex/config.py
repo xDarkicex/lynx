@@ -54,6 +54,13 @@ PROVIDER_REGISTRY: Dict[str, Dict[str, str]] = {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "api_env_var": "QWEN_API_KEY",
     },
+
+    # Local models via Ollama
+    "ollama": {
+        "name": "Ollama",
+        "base_url": "http://localhost:11434/v1",
+        "api_env_var": "OLLAMA_API_KEY",  # Typically empty for local Ollama
+    },
 }
 
 
@@ -75,6 +82,14 @@ class PluginLoadStrategy(Enum):
     LAZY = "lazy"
     EAGER = "eager"
     ON_DEMAND = "on_demand"
+
+
+@dataclass
+class OAuthConfig:
+    """OAuth authentication configuration."""
+    enabled: bool = False
+    client_id: str = ""
+    providers: List[str] = field(default_factory=lambda: ["openai"])
 
 
 @dataclass
@@ -233,6 +248,9 @@ class CodexConfig:
     
     # Plugin system configuration (new)
     plugin_system: PluginSystemConfig = field(default_factory=PluginSystemConfig)
+
+    # OAuth configuration
+    oauth: Optional[OAuthConfig] = None
     
     # Language-specific configurations (new)
     language_configs: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
@@ -601,7 +619,15 @@ class CodexConfig:
                 plugin_data['load_strategy'] = PluginLoadStrategy(plugin_data['load_strategy'])
             
             data['plugin_system'] = PluginSystemConfig(**plugin_data)
-            
+
+        # Handle OAuth configuration
+        if 'oauth' in data:
+            oauth_data = data['oauth']
+            if isinstance(oauth_data, dict):
+                data['oauth'] = OAuthConfig(**oauth_data)
+            elif not isinstance(oauth_data, OAuthConfig):
+                data['oauth'] = None
+
         return cls(**data)
     
     @classmethod

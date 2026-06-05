@@ -2,6 +2,8 @@
 
 import time
 import logging
+import os
+from copy import copy
 from typing import Dict, List, Optional, Any, Type
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -29,6 +31,7 @@ except ImportError:
 from ..exceptions import AIInterfaceError
 from ..utils import count_tokens, truncate_text, get_model_context_limit
 from .config import CodexConfig, ModelConfig
+from ..oauth import OAuthManager, OpenAIOAuthProvider
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +140,7 @@ class AIInterface:
 
     def __init__(self, config: CodexConfig):
         self.config = config
+        self.oauth_manager = self._initialize_oauth()
         self.providers = self._initialize_providers()
         self.total_tokens_used = 0
         self.total_requests = 0
@@ -148,6 +152,18 @@ class AIInterface:
         # Staged model support - use different models for file summarization vs aggregation
         self._file_summarizer_providers = None
         self._aggregation_providers = None
+
+    def _initialize_oauth(self) -> Optional[OAuthManager]:
+        """Initialize OAuth manager if OAuth is configured."""
+        if not self.config.oauth or not self.config.oauth.enabled:
+            return None
+
+        manager = OAuthManager()
+        for provider_name in self.config.oauth.providers:
+            if provider_name == "openai" and self.config.oauth.client_id:
+                provider = OpenAIOAuthProvider(client_id=self.config.oauth.client_id)
+                manager.register(provider)
+        return manager
 
     def _get_staged_providers(self, stage: str) -> List[AIProvider]:
         """Get providers for a specific stage (file_summarizer or aggregation).
@@ -179,6 +195,18 @@ class AIInterface:
         return staged_providers
 
 
+    def _get_api_key(self, provider_name: str) -> str:
+        """Get API key for a provider, using OAuth if enabled."""
+        if self.oauth_manager:
+            oauth_token = self.oauth_manager.get_token(provider_name)
+            if oauth_token:
+                return oauth_token
+
+        # Fall back to environment variable
+        from .config import get_provider_info
+        provider_info = get_provider_info(provider_name)
+        return os.getenv(provider_info["api_env_var"], "")
+
     def _initialize_providers(self) -> List[AIProvider]:
         """Initialize all configured AI providers."""
         providers = []
@@ -192,6 +220,7 @@ class AIInterface:
             'deepseek': AnthropicProvider,  # DeepSeek uses Anthropic-compatible endpoint
             'kimi': OpenAIProvider,  # Kimi uses OpenAI-compatible endpoint
             'qwen': OpenAIProvider,  # Qwen uses OpenAI-compatible endpoint
+            'ollama': OpenAIProvider,  # Ollama uses OpenAI-compatible API
         }
 
         for model_config in self.config.models:
@@ -201,7 +230,12 @@ class AIInterface:
                 continue
 
             try:
-                provider = provider_class(model_config)
+                # Get API key (OAuth or env var)
+                api_key = self._get_api_key(model_config.provider)
+                # Create a copy of model_config with the resolved API key
+                config_with_key = copy(model_config)
+                config_with_key.api_key = api_key
+                provider = provider_class(config_with_key)
                 providers.append(provider)
                 logger.info(f"Initialized {model_config.provider} provider with model {model_config.model}")
             except Exception as e:
@@ -210,7 +244,7 @@ class AIInterface:
 
         if not providers:
             raise AIInterfaceError("No AI providers could be initialized")
-        
+
         return providers
     
     def _initialize_prompts(self) -> Dict[str, ChatPromptTemplate]:

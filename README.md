@@ -15,7 +15,7 @@ Solo developers and hobbyists are encouraged to use the open source version free
 ## Features
 
 ### Multi-Model AI Support
-- **Multiple AI Providers**: OpenAI GPT-4, Anthropic Claude, Perplexity Sonar, MiniMax (M2.7, M3), DeepSeek (V4), Kimi, Qwen
+- **Multiple AI Providers**: OpenAI GPT-4, Anthropic Claude, Perplexity Sonar, MiniMax (M2.7, M3), DeepSeek (V4), Kimi, Qwen, Ollama (local models)
 - **Intelligent Fallback**: Automatic failover between providers for maximum reliability
 - **Staged Model Selection**: Use different models for file analysis vs. aggregation (e.g., MiniMax-M2.7 for files, DeepSeek-V4-Pro for synthesis)
 - **Cost Optimization**: Smart provider selection based on task complexity and cost
@@ -37,6 +37,12 @@ Solo developers and hobbyists are encouraged to use the open source version free
 - **Configuration Management**: Flexible config system with smart defaults
 - **Comprehensive Metrics**: Detailed processing statistics and cost tracking
 
+### OAuth Authentication
+- **Secure Browser-Based Login**: OAuth2.0 with PKCE for secure CLI authentication
+- **OS Keychain Storage**: Tokens stored securely in macOS Keychain, Windows Credential Locker, or Linux Secret Service
+- **Automatic Token Refresh**: Access tokens are automatically refreshed when expired
+- **Multiple Provider Support**: OpenAI OAuth out of the box, extensible for other providers
+
 ## Quick Start
 
 ### Installation
@@ -47,23 +53,24 @@ pip install lynx-codex
 
 ### Environment Setup
 
-Set your AI provider API keys:
+Set your AI provider API keys via environment variables **or** use OAuth authentication:
 
 ```bash
-# MiniMax (uses Anthropic-compatible endpoint)
+# Option 1: Environment variables
 export MINIMAX_API_KEY="your-minimax-key"
-
-# DeepSeek (uses Anthropic-compatible endpoint)
 export DEEPSEEK_API_KEY="your-deepseek-key"
-
-# Anthropic (official)
 export ANTHROPIC_API_KEY="your-anthropic-key"
-
-# OpenAI
 export OPENAI_API_KEY="your-openai-key"
-
-# Perplexity
 export PPLX_API_KEY="your-perplexity-key"
+
+# Option 2: OAuth (secure browser-based login)
+lynx --login --client-id your-openai-client-id
+lynx --status # Verify authentication
+
+# Option 3: Ollama (local models - no API key needed)
+# Install Ollama, then pull models:
+# ollama pull codellama
+# ollama serve  # Start the server on http://localhost:11434
 ```
 
 ### TOML Configuration
@@ -211,6 +218,26 @@ lynx --analyze /path/to/codebase
 lynx --validate-env
 ```
 
+#### OAuth Authentication
+
+```bash
+# Check OAuth status
+lynx --status
+
+# Login with OAuth (opens browser for authentication)
+lynx --login --client-id your-openai-client-id
+
+# Logout (removes token from keychain)
+lynx --logout
+```
+
+**First time setup:**
+1. Register an OAuth application at [platform.openai.com/apps](https://platform.openai.com/apps)
+2. Copy your Client ID
+3. Run `lynx --login --client-id your-client-id`
+4. Complete authentication in the browser
+5. Token is stored securely in your OS keychain
+
 #### Advanced Options
 
 ```bash
@@ -295,6 +322,12 @@ Create `lynx.toml` or use `[tool.lynx]` in `pyproject.toml`:
 [tool.lynx]
 codebase_path = "./src"
 
+# OAuth authentication (alternative to API keys)
+[tool.lynx.oauth]
+enabled = true
+client_id = "your-openai-client-id"
+providers = ["openai"]
+
 # Staged model selection - use different models for different tasks
 file_summarizer_model = "fast"      # Individual file analysis
 aggregation_model = "powerful"       # Final synthesis
@@ -329,11 +362,18 @@ output_dest = "SUMMARY.md"
 | `perplexity` | `https://api.perplexity.ai` | `PPLX_API_KEY` |
 | `kimi` | OpenAI-compatible | `KIMI_API_KEY` |
 | `qwen` | OpenAI-compatible | `QWEN_API_KEY` |
+| `ollama` | `http://localhost:11434/v1` | N/A (local) |
 
 ### JSON Configuration (Legacy)
 
 ```json
 {
+  "codebase_path": "./src",
+  "oauth": {
+    "enabled": true,
+    "client_id": "your-openai-client-id",
+    "providers": ["openai"]
+  },
   "models": [
     {
       "name": "fast",
@@ -348,7 +388,7 @@ output_dest = "SUMMARY.md"
 }
 ```
 
-API keys are resolved from environment variables automatically based on provider.
+API keys are resolved from environment variables automatically based on provider. Alternatively, use OAuth for secure token-based authentication.
 
 ### Plugin System
 
