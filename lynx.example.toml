@@ -1,0 +1,69 @@
+# Lynx Codex Configuration
+# Add to your pyproject.toml or use as a standalone .toml file
+
+[tool.lynx]
+codebase_path = "./src"
+
+# Staged model selection - use different models for different stages
+# file_summarizer: model for individual file summaries (high volume)
+# aggregation: model for final synthesis (low volume but needs quality)
+file_summarizer_model = "fast"
+aggregation_model = "powerful"
+
+# Processing settings
+chunk_size = 2000
+chunk_overlap = 400
+max_workers = 8
+timeout_seconds = 60
+retry_attempts = 3
+fallback_enabled = true
+
+# File filtering
+include_patterns = ["*.py", "*.rs", "*.go", "*.js", "*.ts", "*.java", "*.c", "*.cpp"]
+exclude_patterns = ["*/__pycache__/*", "*/node_modules/*", "*/.git/*", "*/target/*", "*test*"]
+max_file_size = 10485760  # 10MB
+
+# Output
+output_dest = "SUMMARY.md"
+output_format = "markdown"
+include_metrics = true
+
+# Model definitions - just specify name, provider, and model name
+# API keys and endpoints are resolved from environment variables automatically
+# Provider maps to PROVIDER_REGISTRY which handles base_url
+
+[[tool.lynx.models]]
+name = "fast"
+provider = "minimax"
+model = "MiniMax-M2.7"
+temperature = 0.0
+max_tokens = 16000
+
+[[tool.lynx.models]]
+name = "powerful"
+provider = "deepseek"
+model = "deepseek-reasoner"
+temperature = 0.0
+max_tokens = 32000
+
+# Alternative: Use MiniMax-M3 for powerful (if you prefer MiniMax Anthropic endpoint)
+# [[tool.lynx.models]]
+# name = "powerful"
+# provider = "minimax"
+# model = "MiniMax-M3"
+# temperature = 0.0
+# max_tokens = 32000
+
+# Plugin system
+[tool.lynx.plugin_system]
+enabled = true
+auto_discover = true
+
+# Provider registry (built-in, for reference):
+# minimax -> https://api.minimax.io/anthropic (uses MINIMAX_API_KEY)
+# deepseek -> https://api.deepseek.com/anthropic (uses DEEPSEEK_API_KEY)
+# anthropic -> default Anthropic endpoint (uses ANTHROPIC_API_KEY)
+# openai -> https://api.openai.com/v1 (uses OPENAI_API_KEY)
+# perplexity -> https://api.perplexity.ai (uses PPLX_API_KEY)
+# kimi -> OpenAI-compatible endpoint (uses KIMI_API_KEY)
+# qwen -> OpenAI-compatible endpoint (uses QWEN_API_KEY)

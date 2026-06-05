@@ -38,3 +38,5 @@ config.json
 *.log
 master.txt
 lynx-config*.json
+lynx.toml
+*.lynx.toml

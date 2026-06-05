@@ -15,8 +15,9 @@ Solo developers and hobbyists are encouraged to use the open source version free
 ## Features
 
 ### Multi-Model AI Support
-- **Multiple AI Providers**: OpenAI GPT-4, Anthropic Claude, Perplexity Sonar
+- **Multiple AI Providers**: OpenAI GPT-4, Anthropic Claude, Perplexity Sonar, MiniMax (M2.7, M3), DeepSeek (V4), Kimi, Qwen
 - **Intelligent Fallback**: Automatic failover between providers for maximum reliability
+- **Staged Model Selection**: Use different models for file analysis vs. aggregation (e.g., MiniMax-M2.7 for files, DeepSeek-V4-Pro for synthesis)
 - **Cost Optimization**: Smart provider selection based on task complexity and cost
 
 ### Intelligent Code Analysis
@@ -49,10 +50,32 @@ pip install lynx-codex
 Set your AI provider API keys:
 
 ```bash
-export PPLX_API_KEY="your-perplexity-key"
-export OPENAI_API_KEY="your-openai-key"  
+# MiniMax (uses Anthropic-compatible endpoint)
+export MINIMAX_API_KEY="your-minimax-key"
+
+# DeepSeek (uses Anthropic-compatible endpoint)
+export DEEPSEEK_API_KEY="your-deepseek-key"
+
+# Anthropic (official)
 export ANTHROPIC_API_KEY="your-anthropic-key"
+
+# OpenAI
+export OPENAI_API_KEY="your-openai-key"
+
+# Perplexity
+export PPLX_API_KEY="your-perplexity-key"
 ```
+
+### TOML Configuration
+
+Lynx supports TOML config files with auto-discovery. Create `lynx.toml` or add to `pyproject.toml`:
+
+```bash
+# Auto-discovers lynx.toml or [tool.lynx] in pyproject.toml
+lynx /path/to/codebase
+```
+
+See [lynx.example.toml](./lynx.example.toml) for a complete example.
 
 ### Basic Usage
 
@@ -67,11 +90,17 @@ print("Analysis complete! Check master_summary.md")
 ### CLI Usage
 
 ```bash
-# Quick analysis with auto-configuration
+# Auto-discovers lynx.toml or pyproject.toml in current/codebase directory
+lynx /path/to/codebase
+
+# Or specify config explicitly
+lynx /path/to/codebase my-config.toml
+
+# Quick analysis with environment variables only (no config file)
 lynx /path/to/codebase --auto-config
 
 # Create a custom configuration
-lynx --create-config my-config.json --config-type multi-model
+lynx --create-config my-config.toml --config-type multi-model
 
 # Run with custom config
 lynx /path/to/codebase my-config.json
@@ -258,28 +287,161 @@ results = workflow.run(input_data)
 
 ## Configuration Reference
 
-### Model Configuration
+### TOML Configuration (Recommended)
+
+Create `lynx.toml` or use `[tool.lynx]` in `pyproject.toml`:
+
+```toml
+[tool.lynx]
+codebase_path = "./src"
+
+# Staged model selection - use different models for different tasks
+file_summarizer_model = "fast"      # Individual file analysis
+aggregation_model = "powerful"       # Final synthesis
+
+[[tool.lynx.models]]
+name = "fast"
+provider = "minimax"
+model = "MiniMax-M2.7"
+temperature = 0.0
+max_tokens = 16000
+
+[[tool.lynx.models]]
+name = "powerful"
+provider = "deepseek"
+model = "deepseek-reasoner"
+temperature = 0.0
+max_tokens = 32000
+
+chunk_size = 2000
+max_workers = 8
+output_dest = "SUMMARY.md"
+```
+
+### Supported Providers
+
+| Provider | Base URL | API Key Env Var |
+|----------|----------|-----------------|
+| `minimax` | `https://api.minimax.io/anthropic` | `MINIMAX_API_KEY` |
+| `deepseek` | `https://api.deepseek.com/anthropic` | `DEEPSEEK_API_KEY` |
+| `anthropic` | Default Anthropic | `ANTHROPIC_API_KEY` |
+| `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
+| `perplexity` | `https://api.perplexity.ai` | `PPLX_API_KEY` |
+| `kimi` | OpenAI-compatible | `KIMI_API_KEY` |
+| `qwen` | OpenAI-compatible | `QWEN_API_KEY` |
+
+### JSON Configuration (Legacy)
 
 ```json
 {
   "models": [
     {
-      "provider": "perplexity",
-      "model": "sonar-large-chat",
-      "api_key": "pplx-your-key",
+      "name": "fast",
+      "provider": "minimax",
+      "model": "MiniMax-M2.7",
       "temperature": 0.0,
       "max_tokens": 16000
-    },
-    {
-      "provider": "openai",
-      "model": "gpt-4o",
-      "api_key": "sk-your-key",
-      "temperature": 0.0,
-      "max_tokens": 8000
     }
-  ]
+  ],
+  "file_summarizer_model": "fast",
+  "aggregation_model": "powerful"
 }
 ```
+
+API keys are resolved from environment variables automatically based on provider.
+
+### Plugin System
+
+Lynx has a powerful plugin system that hooks into the analysis pipeline at defined points. Plugins can inspect, transform, and enrich the analysis process, enabling multi-step agentic workflows.
+
+#### Hook Points
+
+Plugins can hook into these pipeline stages:
+
+| Hook | When it fires |
+|------|---------------|
+| `BEFORE_SCAN` | Before directory scanning |
+| `AFTER_SCAN` | After directory scan completes |
+| `BEFORE_CHUNK` | Before file chunking |
+| `AFTER_CHUNK` | After chunking completes |
+| `BEFORE_AI_REQUEST` | Before sending to AI |
+| `AFTER_AI_RESPONSE` | After AI responds |
+| `ON_CHUNK_COMPLETE` | After each chunk finishes |
+| `ON_FILE_COMPLETE` | After entire file processed |
+| `BEFORE_AGGREGATE` | Before aggregation |
+| `DURING_AGGREGATE` | After aggregation completes |
+| `BEFORE_OUTPUT` | Before saving output |
+| `AFTER_OUTPUT` | After saving output |
+| `ON_ERROR` | On any error |
+
+#### Plugin Context
+
+Plugins receive a `PluginContext` with shared state:
+
+```python
+ctx.config        # CodexConfig
+ctx.file_info     # Current file metadata
+ctx.content       # File content
+ctx.chunks        # Code chunks
+ctx.request       # AI request sent
+ctx.response     # AI response received
+ctx.file_summaries # All file summaries (during aggregation)
+ctx.master_summary # Final summary (after aggregation)
+ctx.state        # Shared dict for plugin-to-plugin communication
+```
+
+#### Agentic Pipeline Example
+
+Plugins can build rich multi-step workflows:
+
+```python
+class SecurityPlugin:
+    """Step 1: Scan for CVEs on each file."""
+    def on_hook(self, hook, ctx):
+        if hook == HookPoint.ON_FILE_COMPLETE:
+            # Re-scan for security issues, store in shared state
+            cves = scan_for_cves(ctx.file_info, ctx.response.summary)
+            ctx.state.setdefault('cve_findings', []).extend(cves)
+
+class DAGPlugin:
+    """Step 2: Build dependency graph."""
+    def on_hook(self, hook, ctx):
+        if hook == HookPoint.DURING_AGGREGATE:
+            # Build import graph from all summaries
+            ctx.state['dependency_graph'] = build_import_graph(ctx.file_summaries)
+
+class DiagramPlugin:
+    """Step 3: Generate non-technical diagrams."""
+    def on_hook(self, hook, ctx):
+        if hook == HookPoint.DURING_AGGREGATE:
+            # Create flowcharts for non-technical users
+            diagrams = generate_simplified_diagrams(ctx.master_summary)
+            ctx.state['diagrams'] = diagrams
+```
+
+#### Custom Plugins
+
+```python
+from lynx.plugins.core.base import Plugin, PluginContext, HookPoint
+
+class MyPlugin(Plugin):
+    name = "my-plugin"
+    version = "1.0.0"
+    order = 50  # Lower runs earlier
+
+    def supports(self, hook):
+        return hook in [HookPoint.ON_FILE_COMPLETE, HookPoint.DURING_AGGREGATE]
+
+    def on_hook(self, hook, ctx):
+        if hook == HookPoint.ON_FILE_COMPLETE:
+            # Process each file as it completes
+            pass
+        elif hook == HookPoint.DURING_AGGREGATE:
+            # Process after aggregation
+            pass
+```
+
+See [src/lynx/plugins/core/base.py](src/lynx/plugins/core/base.py) for the full Plugin protocol.
 
 ### Processing Settings
 
@@ -432,7 +594,7 @@ For commercial licensing without GPL restrictions and source code disclosure req
 
 We gratefully acknowledge the following:
 
-- **AI Providers**: OpenAI, Anthropic, and Perplexity for enabling intelligent code analysis
+- **AI Providers**: OpenAI, Anthropic, Perplexity, MiniMax, and DeepSeek for enabling intelligent code analysis
 - **LangChain**: For providing excellent AI integration framework and tools
 - **Dynamiq**: For workflow automation capabilities and enterprise integration
 - **Contributors**: All community members who help improve Lynx through code, documentation, and feedback

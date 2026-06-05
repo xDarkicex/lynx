@@ -33,14 +33,14 @@ MODEL_TOKENIZER_MAP = {
     'gpt-4o': 'cl100k_base',
     'gpt-3.5-turbo': 'cl100k_base',
     'gpt-3.5-turbo-16k': 'cl100k_base',
-    
+
     # Perplexity models (use OpenAI tokenizers)
     'sonar-large-chat': 'cl100k_base',
     'sonar-medium-chat': 'cl100k_base',
     'sonar-small-chat': 'cl100k_base',
     'sonar-large-online': 'cl100k_base',
     'sonar-medium-online': 'cl100k_base',
-    
+
     # Anthropic models (use cl100k_base as approximation)
     'claude-3-opus-20240229': 'cl100k_base',
     'claude-3-sonnet-20240229': 'cl100k_base',
@@ -48,6 +48,12 @@ MODEL_TOKENIZER_MAP = {
     'claude-2.1': 'cl100k_base',
     'claude-2.0': 'cl100k_base',
     'claude-instant-1.2': 'cl100k_base',
+
+    # MiniMax models (Anthropic-compatible, use cl100k_base)
+    'MiniMax-M3': 'cl100k_base',
+    'MiniMax-M2.7': 'cl100k_base',
+    'MiniMax-M2.5': 'cl100k_base',
+    'MiniMax-M2.1': 'cl100k_base',
 }
 
 # Cache encodings so we only pay the setup cost once per model
@@ -117,6 +123,12 @@ def get_model_context_limit(model: str) -> int:
         'claude-2.1': 200000,
         'claude-2.0': 100000,
         'claude-instant-1.2': 100000,
+
+        # MiniMax models (Anthropic-compatible)
+        'MiniMax-M3': 1000000,
+        'MiniMax-M2.7': 1000000,
+        'MiniMax-M2.5': 1000000,
+        'MiniMax-M2.1': 1000000,
     }
     return context_limits.get(model, 4096)  # Default to safe 4k limit
 
@@ -138,20 +150,23 @@ def validate_config(config: Dict) -> List[str]:
         if not isinstance(config["models"], list) or not config["models"]:
             issues.append("'models' must be a non-empty list")
         else:
+            from lynx.codex.config import PROVIDER_REGISTRY
+            valid_providers = set(PROVIDER_REGISTRY.keys())
+
             for i, model in enumerate(config["models"]):
                 if not isinstance(model, dict):
                     issues.append(f"Model {i} must be a dictionary")
                     continue
-                
-                required_fields = ["provider", "model", "api_key"]
-                for field in required_fields:
-                    if field not in model:
-                        issues.append(f"Model {i} missing required field: {field}")
-                
+
+                # Check required fields (name is optional now)
+                if "provider" not in model:
+                    issues.append(f"Model {i} missing required field: provider")
+                if "model" not in model:
+                    issues.append(f"Model {i} missing required field: model")
+
                 # Validate provider
-                valid_providers = {"perplexity", "openai", "anthropic"}
                 if model.get("provider") not in valid_providers:
-                    issues.append(f"Model {i} has invalid provider. Must be one of: {valid_providers}")
+                    issues.append(f"Model {i} has invalid provider '{model.get('provider')}'. Must be one of: {valid_providers}")
     
     # Validate numeric fields
     numeric_fields = {
@@ -186,34 +201,122 @@ def validate_config(config: Dict) -> List[str]:
     
     return issues
 
+def _resolve_api_keys_from_env(config: Dict) -> Dict:
+    """
+    Resolve API keys from environment variables based on configured models.
+
+    For each model in config['models'], if api_key is empty or placeholder,
+    resolve from environment based on provider/base_url/model name.
+    """
+    import os
+
+    if 'models' not in config or not config['models']:
+        return config
+
+    for model in config['models']:
+        api_key = model.get('api_key', '')
+
+        # Skip if already has a real key (not a placeholder)
+        if api_key and api_key not in ('', 'your-api-key-here', 'your-minimax-key', 'your-deepseek-key'):
+            continue
+
+        base_url = model.get('base_url', '').lower()
+        model_name = model.get('model', '')
+        provider = model.get('provider', '').lower()
+
+        resolved = False
+
+        # MiniMax via Anthropic-compatible endpoint
+        if 'minimax' in base_url or model_name.startswith('MiniMax-'):
+            env_value = os.getenv('MINIMAX_API_KEY')
+            if env_value:
+                model['api_key'] = env_value
+                resolved = True
+
+        # DeepSeek via OpenAI-compatible endpoint
+        elif 'deepseek' in base_url or 'deepseek' in model_name.lower():
+            env_value = os.getenv('DEEPSEEK_API_KEY') or os.getenv('OPENAI_API_KEY')
+            if env_value:
+                model['api_key'] = env_value
+                resolved = True
+
+        # Perplexity
+        elif provider == 'perplexity' or model_name.startswith('sonar-'):
+            env_value = os.getenv('PPLX_API_KEY') or os.getenv('PERPLEXITY_API_KEY')
+            if env_value:
+                model['api_key'] = env_value
+                resolved = True
+
+        # OpenAI
+        elif provider == 'openai':
+            env_value = os.getenv('OPENAI_API_KEY')
+            if env_value:
+                model['api_key'] = env_value
+                resolved = True
+
+        # Anthropic (actual Anthropic, not MiniMax)
+        elif provider == 'anthropic':
+            env_value = os.getenv('ANTHROPIC_API_KEY')
+            if env_value:
+                model['api_key'] = env_value
+                resolved = True
+
+    return config
+
 def load_config_file(config_path: str) -> Dict:
     """
-    Load and validate configuration from JSON file.
-    
+    Load and validate configuration from JSON or TOML file.
+
     Args:
-        config_path: Path to JSON config file
-        
+        config_path: Path to config file (.json or .toml)
+
     Returns:
         Loaded configuration dictionary
-        
+
     Raises:
         FileNotFoundError: If config file doesn't exist
         ValueError: If config is invalid
     """
-    if not os.path.exists(config_path):
+    path = Path(config_path)
+    if not path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    
+
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        if path.suffix == '.toml':
+            try:
+                import tomllib
+                with open(path, 'rb') as f:
+                    config = tomllib.load(f)
+            except ImportError:
+                try:
+                    import tomli
+                    with open(path, 'rb') as f:
+                        config = tomli.load(f)
+                except ImportError:
+                    raise ValueError("tomli required for TOML parsing. Install with: pip install tomli")
+
+            # Look for [tool.lynx] or [lynx] section
+            if 'tool' in config and 'lynx' in config['tool']:
+                config = config['tool']['lynx']
+            elif 'lynx' in config:
+                config = config['lynx']
+            else:
+                raise ValueError(f"No [tool.lynx] or [lynx] section found in {config_path}")
+        else:
+            # JSON
+            with open(path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in config file: {e}")
-    
+
+    # Resolve API keys from environment variables
+    config = _resolve_api_keys_from_env(config)
+
     # Validate the config
     issues = validate_config(config)
     if issues:
         raise ValueError(f"Invalid configuration:\n" + "\n".join(f"- {issue}" for issue in issues))
-    
+
     logger.info(f"Loaded configuration from: {config_path}")
     return config
 

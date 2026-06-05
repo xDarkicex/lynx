@@ -18,16 +18,30 @@ except Exception:
     SummaryResponse = Any
 
 class HookPoint(Enum):
+    # Scanning phase
     BEFORE_SCAN = auto()
     AFTER_SCAN = auto()
+    
+    # Chunking phase
     BEFORE_CHUNK = auto()
     AFTER_CHUNK = auto()
+    
+    # AI processing phase (per-file)
     BEFORE_AI_REQUEST = auto()
     AFTER_AI_RESPONSE = auto()
+    ON_FILE_COMPLETE = auto()  # After entire file processed (all chunks done)
+    ON_CHUNK_COMPLETE = auto()  # After each chunk finishes
+    
+    # Aggregation phase
     BEFORE_AGGREGATE = auto()
+    DURING_AGGREGATE = auto()  # Streaming callback during aggregation
     AFTER_AGGREGATE = auto()
+    
+    # Output phase
     BEFORE_OUTPUT = auto()
     AFTER_OUTPUT = auto()
+    
+    # Error handling
     ON_ERROR = auto()
 
 @dataclass

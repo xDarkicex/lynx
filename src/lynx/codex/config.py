@@ -9,28 +9,115 @@ from enum import Enum
 
 from ..exceptions import ConfigError
 
+
+# Provider registry - maps friendly provider names to their endpoints
+PROVIDER_REGISTRY: Dict[str, Dict[str, str]] = {
+    # Anthropic-compatible providers (MiniMax, DeepSeek, etc.) - default for code analysis
+    "minimax": {
+        "name": "MiniMax",
+        "base_url": "https://api.minimax.io/anthropic",  # Anthropic endpoint for thinking blocks
+        "api_env_var": "MINIMAX_API_KEY",
+    },
+    "deepseek": {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com/anthropic",  # Anthropic endpoint
+        "api_env_var": "DEEPSEEK_API_KEY",
+    },
+    "anthropic": {
+        "name": "Anthropic",
+        "base_url": "",  # Uses default Anthropic endpoint
+        "api_env_var": "ANTHROPIC_API_KEY",
+    },
+
+    # OpenAI-compatible providers
+    "openai": {
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "api_env_var": "OPENAI_API_KEY",
+    },
+
+    # Perplexity
+    "perplexity": {
+        "name": "Perplexity",
+        "base_url": "https://api.perplexity.ai",
+        "api_env_var": "PPLX_API_KEY",
+    },
+
+    # Other providers
+    "kimi": {
+        "name": "Kimi",
+        "base_url": "https://api.moonshot.cn/v1",
+        "api_env_var": "KIMI_API_KEY",
+    },
+    "qwen": {
+        "name": "Qwen",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_env_var": "QWEN_API_KEY",
+    },
+}
+
+
+def get_provider_info(provider_name: str) -> Dict[str, str]:
+    """Get provider info from registry, with fallback to openai-compatible defaults."""
+    if provider_name in PROVIDER_REGISTRY:
+        return PROVIDER_REGISTRY[provider_name]
+
+    # Unknown provider - assume OpenAI-compatible with env var lookup
+    return {
+        "name": provider_name,
+        "base_url": "",
+        "api_env_var": f"{provider_name.upper()}_API_KEY",
+    }
+
+
 class PluginLoadStrategy(Enum):
     """Strategy for loading plugins."""
     LAZY = "lazy"
     EAGER = "eager"
     ON_DEMAND = "on_demand"
 
+
 @dataclass
 class ModelConfig:
     """Configuration for a single AI model."""
-    provider: str  # 'openai', 'perplexity', 'anthropic'
-    model: str     # Model name
-    api_key: str   # API key for this provider
+    name: str  # Friendly name for this model config (e.g., "fast-summarizer")
+    provider: str  # Provider key from PROVIDER_REGISTRY
+    model: str  # Actual model name (e.g., "MiniMax-M2.7", "deepseek-chat")
     temperature: float = 0.0
     max_tokens: int = 16000
-    
+    base_url: Optional[str] = None  # Optional override of provider's base_url
+    api_key: str = ""  # Deprecated - kept for backwards compat, now resolved from env
+
+    def get_api_key(self) -> str:
+        """Get API key from environment based on provider."""
+        if self.api_key:
+            return self.api_key
+        provider_info = get_provider_info(self.provider)
+        return os.getenv(provider_info["api_env_var"], "")
+
+    def get_base_url(self) -> str:
+        """Get base URL - use override if set, otherwise from provider registry."""
+        if self.base_url:
+            return self.base_url
+        provider_info = get_provider_info(self.provider)
+        return provider_info["base_url"]
+
+    def to_langchain_config(self) -> Dict[str, Any]:
+        """Convert to LangChain-compatible config."""
+        return {
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "base_url": self.get_base_url(),
+            "api_key": self.get_api_key(),
+        }
+
     def __post_init__(self):
         if not self.provider:
             raise ConfigError("Provider is required for model config")
         if not self.model:
             raise ConfigError("Model name is required for model config")
-        if not self.api_key:
-            raise ConfigError("API key is required for model config")
+        # Note: api_key is optional now - resolved from env at runtime
 
 @dataclass
 class PluginConfig:
@@ -97,13 +184,19 @@ class PluginSystemConfig:
 @dataclass
 class CodexConfig:
     """Enhanced configuration for Codex summarization with plugin support."""
-    
+
     # Required settings
     codebase_path: str = ""
-    
+
     # Multi-model configuration - list of models in fallback order
     models: List[ModelConfig] = field(default_factory=list)
-    
+
+    # Staged model configuration - use different models for different stages
+    file_summarizer_model: Optional[str] = None  # Model for individual file summaries
+    aggregation_model: Optional[str] = None      # Model for final aggregation
+    file_summarizer_provider: Optional[str] = None  # Provider override for file summarizer
+    aggregation_provider: Optional[str] = None    # Provider override for aggregation
+
     # Legacy single model support (for backwards compatibility)
     api_key: str = ""
     model: str = "sonar-large-chat"
@@ -343,7 +436,7 @@ class CodexConfig:
     def _load_from_environment(self):
         """Load model configuration from environment variables."""
         env_models = []
-        
+
         # Try Perplexity first
         pplx_key = os.getenv('PPLX_API_KEY') or os.getenv('PERPLEXITY_API_KEY')
         if pplx_key:
@@ -354,7 +447,7 @@ class CodexConfig:
                 temperature=0.0,
                 max_tokens=16000
             ))
-        
+
         # Try OpenAI
         openai_key = os.getenv('OPENAI_API_KEY')
         if openai_key:
@@ -365,7 +458,7 @@ class CodexConfig:
                 temperature=0.0,
                 max_tokens=8000
             ))
-        
+
         # Try Anthropic
         anthropic_key = os.getenv('ANTHROPIC_API_KEY')
         if anthropic_key:
@@ -376,7 +469,21 @@ class CodexConfig:
                 temperature=0.0,
                 max_tokens=100000
             ))
-        
+
+        # Try MiniMax via Anthropic-compatible endpoint
+        minimax_key = os.getenv('MINIMAX_API_KEY')
+        if minimax_key:
+            minimax_base_url = os.getenv('MINIMAX_ANTHROPIC_URL', 'https://api.minimax.io/anthropic')
+            minimax_model = os.getenv('MINIMAX_MODEL', 'MiniMax-M3')
+            env_models.append(ModelConfig(
+                provider='anthropic',
+                model=minimax_model,
+                api_key=minimax_key,
+                temperature=0.0,
+                max_tokens=16000,
+                base_url=minimax_base_url
+            ))
+
         self.models = env_models
     
     def validate(self) -> None:
@@ -402,8 +509,8 @@ class CodexConfig:
         # Validate each model config
         for i, model_config in enumerate(self.models):
             try:
-                # This will raise ConfigError if invalid
-                if not model_config.provider or not model_config.model or not model_config.api_key:
+                # Just check provider and model exist - api_key is resolved from env at runtime
+                if not model_config.provider or not model_config.model:
                     raise ConfigError("Invalid model configuration")
             except Exception as e:
                 raise ConfigError(f"Invalid model configuration at index {i}: {e}")
@@ -441,17 +548,27 @@ class CodexConfig:
             data['include_patterns'] = set(data['include_patterns'])
         if 'exclude_patterns' in data and isinstance(data['exclude_patterns'], list):
             data['exclude_patterns'] = set(data['exclude_patterns'])
-        
-        # Handle models list
+
+        # Handle models list - new format with name, provider, model
         if 'models' in data and isinstance(data['models'], list):
             models = []
             for model_data in data['models']:
                 if isinstance(model_data, dict):
-                    models.append(ModelConfig(**model_data))
+                    # Support both old format (provider, model, api_key) and new format (name, provider, model)
+                    if 'name' not in model_data:
+                        # Old format - generate a name from provider:model
+                        model_name = f"{model_data.get('provider', 'unknown')}:{model_data.get('model', 'unknown')}"
+                        model_data['name'] = model_name
+                    # Remove api_key and base_url if present (resolved from provider at runtime)
+                    model_data_clean = {
+                        k: v for k, v in model_data.items()
+                        if k not in ('api_key', 'base_url')
+                    }
+                    models.append(ModelConfig(**model_data_clean))
                 else:
                     models.append(model_data)
             data['models'] = models
-        
+
         # Handle plugin system configuration
         if 'plugin_system' in data:
             plugin_data = data['plugin_system']
@@ -489,7 +606,39 @@ class CodexConfig:
     
     @classmethod
     def from_file(cls, config_path: str) -> 'CodexConfig':
-        """Load configuration from JSON file."""
+        """Load configuration from JSON file or pyproject.toml."""
+        path = Path(config_path)
+
+        if path.suffix == '.toml':
+            try:
+                import tomllib
+                with open(config_path, 'rb') as f:
+                    data = tomllib.load(f)
+                # Look for [tool.lynx] or [lynx] section
+                if 'tool' in data and 'lynx' in data['tool']:
+                    config_data = data['tool']['lynx']
+                elif 'lynx' in data:
+                    config_data = data['lynx']
+                else:
+                    raise ConfigError(f"No [tool.lynx] or [lynx] section found in {config_path}")
+                return cls.from_dict(config_data)
+            except ImportError:
+                # Python < 3.11, try tomli
+                try:
+                    import tomli
+                    with open(config_path, 'rb') as f:
+                        data = tomli.load(f)
+                    if 'tool' in data and 'lynx' in data['tool']:
+                        config_data = data['tool']['lynx']
+                    elif 'lynx' in data:
+                        config_data = data['lynx']
+                    else:
+                        raise ConfigError(f"No [tool.lynx] or [lynx] section found in {config_path}")
+                    return cls.from_dict(config_data)
+                except ImportError:
+                    raise ConfigError("tomli required for TOML parsing. Install with: pip install tomli")
+
+        # Default to JSON
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -497,7 +646,7 @@ class CodexConfig:
             raise ConfigError(f"Config file not found: {config_path}")
         except json.JSONDecodeError as e:
             raise ConfigError(f"Invalid JSON in config file: {e}")
-            
+
         return cls.from_dict(data)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -551,7 +700,29 @@ class CodexConfig:
         if not self.models:
             raise ConfigError("No models configured")
         return self.models[0]
-    
+
+    def get_file_summarizer_model(self) -> ModelConfig:
+        """Get the model for individual file summarization."""
+        if self.file_summarizer_model:
+            # Find matching model or create one
+            for m in self.models:
+                if m.model == self.file_summarizer_model:
+                    return m
+            # Model not in list, return primary
+            return self.get_primary_model()
+        return self.get_primary_model()
+
+    def get_aggregation_model(self) -> ModelConfig:
+        """Get the model for final aggregation."""
+        if self.aggregation_model:
+            # Find matching model or create one
+            for m in self.models:
+                if m.model == self.aggregation_model:
+                    return m
+            # Model not in list, return primary
+            return self.get_primary_model()
+        return self.get_primary_model()
+
     def get_fallback_models(self) -> List[ModelConfig]:
         """Get fallback model configurations (all except the first)."""
         return self.models[1:] if len(self.models) > 1 else []

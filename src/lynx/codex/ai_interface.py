@@ -91,61 +91,115 @@ class PerplexityProvider(AIProvider):
         )
 
 class OpenAIProvider(AIProvider):
-    """OpenAI provider implementation."""
-    
+    """OpenAI provider implementation (supports custom endpoints like MiniMax, DeepSeek)."""
+
     def _initialize_llm(self) -> BaseLanguageModel:
         if ChatOpenAI is None:
             raise AIInterfaceError("langchain-openai not installed")
-        
-        return ChatOpenAI(
-            model=self.model_config.model,
-            temperature=self.model_config.temperature,
-            openai_api_key=self.model_config.api_key,
-            max_tokens=self.model_config.max_tokens
-        )
+
+        kwargs = {
+            'model': self.model_config.model,
+            'temperature': self.model_config.temperature,
+            'openai_api_key': self.model_config.get_api_key(),
+            'max_tokens': self.model_config.max_tokens
+        }
+
+        # Get base_url from model config (via provider registry or override)
+        base_url = self.model_config.get_base_url()
+        if base_url:
+            kwargs['base_url'] = base_url
+
+        return ChatOpenAI(**kwargs)
 
 class AnthropicProvider(AIProvider):
-    """Anthropic provider implementation."""
-    
+    """Anthropic provider implementation (supports custom endpoints like MiniMax, DeepSeek)."""
+
     def _initialize_llm(self) -> BaseLanguageModel:
         if ChatAnthropic is None:
             raise AIInterfaceError("langchain-anthropic not installed")
-        
-        return ChatAnthropic(
-            model=self.model_config.model,
-            temperature=self.model_config.temperature,
-            anthropic_api_key=self.model_config.api_key,
-            max_tokens=self.model_config.max_tokens
-        )
+
+        kwargs = {
+            'model': self.model_config.model,
+            'temperature': self.model_config.temperature,
+            'anthropic_api_key': self.model_config.get_api_key(),
+            'max_tokens': self.model_config.max_tokens
+        }
+
+        # Get base_url from model config (via provider registry or override)
+        base_url = self.model_config.get_base_url()
+        if base_url:
+            kwargs['base_url'] = base_url
+
+        return ChatAnthropic(**kwargs)
 
 class AIInterface:
     """Multi-provider AI interface with fallback support."""
-    
+
     def __init__(self, config: CodexConfig):
         self.config = config
         self.providers = self._initialize_providers()
         self.total_tokens_used = 0
         self.total_requests = 0
         self.provider_stats = {}
-        
+
         # Prompts for different summarization tasks
         self.prompts = self._initialize_prompts()
-    
+
+        # Staged model support - use different models for file summarization vs aggregation
+        self._file_summarizer_providers = None
+        self._aggregation_providers = None
+
+    def _get_staged_providers(self, stage: str) -> List[AIProvider]:
+        """Get providers for a specific stage (file_summarizer or aggregation).
+
+        Returns filtered subset of self.providers matching the stage's model,
+        or falls back to self.providers if no match found.
+        """
+        if stage == 'file_summarizer':
+            model_name = self.config.file_summarizer_model
+        elif stage == 'aggregation':
+            model_name = self.config.aggregation_model
+        else:
+            return self.providers
+
+        if not model_name:
+            return self.providers
+
+        staged_providers = []
+        for provider in self.providers:
+            # Check if this provider's model matches the stage's model
+            model_config = provider.model_config
+            if model_config.name == model_name or model_config.model == model_name:
+                staged_providers.append(provider)
+
+        if not staged_providers:
+            logger.warning(f"No providers found for stage {stage} with model {model_name}, using defaults")
+            return self.providers
+
+        return staged_providers
+
+
     def _initialize_providers(self) -> List[AIProvider]:
         """Initialize all configured AI providers."""
         providers = []
+        # Map all providers to their LangChain classes
+        # Note: minimax/deepseek use Anthropic/OpenAI with their respective endpoints
         provider_classes = {
             'perplexity': PerplexityProvider,
             'openai': OpenAIProvider,
             'anthropic': AnthropicProvider,
+            'minimax': AnthropicProvider,  # MiniMax uses Anthropic-compatible endpoint
+            'deepseek': AnthropicProvider,  # DeepSeek uses Anthropic-compatible endpoint
+            'kimi': OpenAIProvider,  # Kimi uses OpenAI-compatible endpoint
+            'qwen': OpenAIProvider,  # Qwen uses OpenAI-compatible endpoint
         }
-        
+
         for model_config in self.config.models:
             provider_class = provider_classes.get(model_config.provider)
             if provider_class is None:
                 logger.warning(f"Unknown provider: {model_config.provider}")
                 continue
-            
+
             try:
                 provider = provider_class(model_config)
                 providers.append(provider)
@@ -153,7 +207,7 @@ class AIInterface:
             except Exception as e:
                 logger.warning(f"Failed to initialize {model_config.provider} provider: {e}")
                 continue
-        
+
         if not providers:
             raise AIInterfaceError("No AI providers could be initialized")
         
@@ -163,36 +217,47 @@ class AIInterface:
         """Initialize prompt templates for different tasks."""
         return {
             'file_summary': ChatPromptTemplate.from_messages([
-                SystemMessage(content=(
+                ('system', (
                     "You are a senior software engineer analyzing code. "
-                    "Provide a concise, technical summary of the given code file. "
-                    "Focus on:\n"
+                    "Provide a comprehensive, technical summary of the given code file. "
+                    "For EVERY function/method you MUST include:\n"
+                    "1. EXACT verbatim function signature with full type annotations\n"
+                    "2. Big O time and space complexity (e.g., O(n log n), O(1), etc.)\n"
+                    "3. Cyclomatic complexity estimate (Low/Medium/High/Very High)\n"
+                    "4. Parameter types and return types verbatim\n"
+                    "5. Any interfaces, unions, or enums used\n\n"
+                    "Also provide:\n"
                     "• Primary purpose and functionality\n"
-                    "• Key data structures and their roles\n" 
-                    "• Public API/interface (functions, methods, exports)\n"
+                    "• Key data structures and their types\n"
                     "• Important algorithms or business logic\n"
                     "• Dependencies and integrations\n"
                     "• Notable patterns or architectural decisions\n\n"
                     "Be precise and use technical terminology. "
-                    "Limit response to 300 tokens maximum."
+                    "Be comprehensive - do not truncate details. Maximum 800 tokens."
                 )),
-                HumanMessage(content=(
+                ('human', (
                     "File: {file_path}\n"
                     "Language: {language}\n"
                     "Content:\n{content}"
                 ))
             ]),
-            
+
             'chunk_summary': ChatPromptTemplate.from_messages([
-                SystemMessage(content=(
-                    "You are analyzing a code chunk. Provide a brief summary focusing on:\n"
+                ('system', (
+                    "You are analyzing a code chunk. Provide a detailed summary with:\n"
+                    "1. EXACT verbatim function signatures with full type annotations\n"
+                    "2. Big O time and space complexity for each function/method\n"
+                    "3. Cyclomatic complexity estimate (Low/Medium/High/Very High)\n"
+                    "4. Parameter types and return types verbatim\n"
+                    "5. Any interfaces, unions, or enums used\n\n"
+                    "Also include:\n"
                     "• What this code does\n"
                     "• Key functions/methods and their purpose\n"
                     "• Important data structures\n"
                     "• Any notable patterns or algorithms\n\n"
-                    "Keep it concise (under 150 tokens)."
+                    "Be comprehensive - do not truncate. Maximum 500 tokens."
                 )),
-                HumanMessage(content=(
+                ('human', (
                     "Chunk type: {chunk_type}\n"
                     "Language: {language}\n"
                     "Content:\n{content}"
@@ -200,39 +265,65 @@ class AIInterface:
             ]),
             
             'aggregate_summary': ChatPromptTemplate.from_messages([
-                SystemMessage(content=(
-                    "Combine and synthesize the following file summaries into a cohesive "
-                    "project overview. Organize by:\n"
-                    "• Project structure and architecture\n"
-                    "• Key modules and their responsibilities\n"
-                    "• Main functionality and features\n"
-                    "• Technology stack and dependencies\n"
-                    "• Notable patterns and design decisions\n\n"
-                    "Create a professional summary suitable for technical documentation."
+                ('system', (
+                    "You are a senior software engineer creating technical documentation. "
+                    "Combine and synthesize the following detailed file summaries into a cohesive "
+                    "project overview. Your output MUST include these EXACT sections:\n\n"
+                    "## 1. Project Overview (1-2 sentences)\n"
+                    "A single paragraph explaining what this codebase does and how it works. "
+                    "Answer: What problem does it solve? How does it solve it? What is the main approach?\n\n"
+                    "## 2. Project Structure & Architecture\n"
+                    "Directory tree and architectural patterns used (layered, microservices, plugin-based, etc.)\n\n"
+                    "## 3. Key Modules & Components\n"
+                    "For each major module: its responsibility, key functions with EXACT signatures and types, Big O complexity, cyclomatic complexity estimates.\n\n"
+                    "## 4. Technology Stack\n"
+                    "Languages, frameworks, libraries, tools used.\n\n"
+                    "## 5. Notable Design Decisions\n"
+                    "Architectural choices, patterns, conventions, non-obvious implementation details.\n\n"
+                    "## 6. Potential Bugs & Issues\n"
+                    "Analysis of:\n"
+                    "- Edge cases that may not be handled\n"
+                    "- Error handling gaps or missing validation\n"
+                    "- Race conditions, concurrency issues, or thread safety concerns\n"
+                    "- Memory leaks, resource cleanup issues\n"
+                    "- Security vulnerabilities (injection, auth issues, etc.)\n"
+                    "- API/design issues that could cause problems at scale\n"
+                    "- Known limitations or todos that hint at incomplete implementation\n\n"
+                    "Be honest and thorough - this section helps developers understand real risks.\n\n"
+                    "## 7. Complexity Analysis\n"
+                    "Highlight the most complex functions/modules with their Big O and cyclomatic complexity.\n\n"
+                    "Create professional technical documentation."
                 )),
-                HumanMessage(content="File summaries:\n{summaries}")
+                ('human', "Detailed file summaries:\n{summaries}")
             ])
         }
     
+    def _get_providers_for_summarize_file(self) -> List[AIProvider]:
+        """Get providers for individual file summarization."""
+        if self.config.file_summarizer_model:
+            return self._get_staged_providers('file_summarizer')
+        return self.providers
+
     def summarize_file(self, request: SummaryRequest) -> SummaryResponse:
         """
         Summarize a single file or chunk with fallback support.
-        
+
         Args:
             request: Summary request with content and metadata
-            
+
         Returns:
             Summary response with results and metrics
         """
         start_time = time.time()
-        
+        providers = self._get_providers_for_summarize_file()
+
         # Try each provider in order until one succeeds
-        for i, provider in enumerate(self.providers):
+        for i, provider in enumerate(providers):
             try:
                 return self._attempt_summarization(request, provider, start_time, i > 0)
             except Exception as e:
                 logger.warning(f"Provider {provider.get_provider_name()} failed: {e}")
-                if i == len(self.providers) - 1:  # Last provider failed
+                if i == len(providers) - 1:  # Last provider failed
                     logger.error(f"All providers failed for {request.file_path}")
                     return SummaryResponse(
                         summary=f"Error: All AI providers failed. Last error: {str(e)}",
@@ -296,12 +387,13 @@ class AIInterface:
         
         # Make AI request with retries for this provider
         response = self._make_request_with_retry(provider, formatted_prompt)
-        
+
         processing_time = time.time() - start_time
-        
-        # Calculate accurate token usage
+
+        # Extract text content from response (handles MiniMax thinking blocks)
+        response_text = self._extract_response_text(response)
         input_tokens = count_tokens(content_truncated, model_name)
-        output_tokens = count_tokens(response.content, model_name)
+        output_tokens = count_tokens(response_text, model_name)
         tokens_used = input_tokens + output_tokens
         
         self.total_tokens_used += tokens_used
@@ -314,30 +406,55 @@ class AIInterface:
         self.provider_stats[provider_name]['tokens'] += tokens_used
         
         logger.debug(f"Summarized {request.file_path} using {provider_name} in {processing_time:.2f}s, tokens: {tokens_used}")
-        
+
         return SummaryResponse(
-            summary=response.content.strip(),
+            summary=response_text.strip(),
             tokens_used=tokens_used,
             processing_time=processing_time,
             model_used=model_name,
             provider_used=provider_name,
             fallback_used=is_fallback
         )
-    
+
+    def _extract_response_text(self, response: Any) -> str:
+        """Extract text content from AI response, handling MiniMax thinking blocks."""
+        if hasattr(response, 'content') and isinstance(response.content, list):
+            # Handle content blocks (MiniMax, Anthropic style)
+            text_parts = []
+            for block in response.content:
+                if isinstance(block, dict):
+                    if block.get('type') == 'text':
+                        text_parts.append(block.get('text', ''))
+                elif hasattr(block, 'type'):
+                    if block.type == 'text':
+                        text_parts.append(block.text if hasattr(block, 'text') else str(block))
+            if text_parts:
+                return '\n'.join(text_parts)
+        elif hasattr(response, 'content') and isinstance(response.content, str):
+            return response.content
+        return str(response)
+
+    def _get_providers_for_aggregation(self) -> List[AIProvider]:
+        """Get providers for aggregation stage."""
+        if self.config.aggregation_model:
+            return self._get_staged_providers('aggregation')
+        return self.providers
+
     def aggregate_summaries(self, summaries: List[str]) -> SummaryResponse:
         """
         Combine multiple file summaries into a project overview with fallback support.
-        
+
         Args:
             summaries: List of individual file summaries
-            
+
         Returns:
             Aggregated summary response
         """
         start_time = time.time()
-        
+        providers = self._get_providers_for_aggregation()
+
         # Try each provider in order until one succeeds
-        for i, provider in enumerate(self.providers):
+        for i, provider in enumerate(providers):
             try:
                 return self._attempt_aggregation(summaries, provider, start_time, i > 0)
             except Exception as e:
@@ -388,25 +505,26 @@ class AIInterface:
         formatted_prompt = prompt.format(summaries=combined_text)
         
         response = self._make_request_with_retry(provider, formatted_prompt)
-        
+
         processing_time = time.time() - start_time
-        
-        # Calculate accurate token usage
+
+        # Extract text content from response (handles MiniMax thinking blocks)
+        response_text = self._extract_response_text(response)
         input_tokens = count_tokens(combined_text, model_name)
-        output_tokens = count_tokens(response.content, model_name)
+        output_tokens = count_tokens(response_text, model_name)
         tokens_used = input_tokens + output_tokens
-        
+
         self.total_tokens_used += tokens_used
         self.total_requests += 1
-        
+
         # Update provider stats
         if provider_name not in self.provider_stats:
             self.provider_stats[provider_name] = {'requests': 0, 'tokens': 0, 'errors': 0}
         self.provider_stats[provider_name]['requests'] += 1
         self.provider_stats[provider_name]['tokens'] += tokens_used
-        
+
         return SummaryResponse(
-            summary=response.content.strip(),
+            summary=response_text.strip(),
             tokens_used=tokens_used,
             processing_time=processing_time,
             model_used=model_name,
@@ -436,10 +554,11 @@ class AIInterface:
                 formatted_prompt = prompt.format(summaries=combined_truncated)
                 
                 response = self._make_request_with_retry(provider, formatted_prompt)
-                next_level.append(response.content.strip())
-                
+                response_text = self._extract_response_text(response)
+                next_level.append(response_text.strip())
+
                 # Track tokens for hierarchical processing
-                tokens_used = count_tokens(combined, model_name) + count_tokens(response.content, model_name)
+                tokens_used = count_tokens(combined, model_name) + count_tokens(response_text, model_name)
                 self.total_tokens_used += tokens_used
                 self.total_requests += 1
                 

@@ -10,7 +10,7 @@ from ..utils import scan_directory, FileInfo, count_tokens
 from ..exceptions import ProcessingError
 from .config import CodexConfig
 from .chunker import SemanticChunker, Chunk
-from .ai_interface import AIInterface, SummaryRequest
+from .ai_interface import AIInterface, SummaryRequest, SummaryResponse
 from ..plugins.core.manager import PluginManager
 from ..plugins.core.base import PluginContext, HookPoint
 
@@ -273,6 +273,10 @@ class CodexSummarizer:
             if self.plugin_manager:
                 self.plugin_manager.emit(HookPoint.AFTER_AI_RESPONSE, chunk_ctx)
             
+            # ON_CHUNK_COMPLETE hook - fires after each chunk
+            if self.plugin_manager:
+                self.plugin_manager.emit(HookPoint.ON_CHUNK_COMPLETE, chunk_ctx)
+            
             # Track fallback usage
             if response.fallback_used:
                 self.stats['fallbacks_used'] += 1
@@ -302,6 +306,13 @@ class CodexSummarizer:
         
         # Use AI to aggregate summaries
         response = self.ai_interface.aggregate_summaries(valid_summaries)
+        
+        # DURING_AGGREGATE hook - fires after aggregation completes
+        if self.plugin_manager:
+            agg_ctx = PluginContext(config=self.config)
+            agg_ctx.master_summary = response.summary
+            agg_ctx.file_summaries = file_summaries
+            self.plugin_manager.emit(HookPoint.DURING_AGGREGATE, agg_ctx)
         
         # Track fallback usage
         if response.fallback_used:

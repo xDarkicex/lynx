@@ -132,6 +132,76 @@ def handle_auto_config(codebase_path: str, save_config: Optional[str] = None) ->
         print("💡 Try setting API keys in environment variables or use --create-config")
         sys.exit(1)
 
+def _discover_config_file(codebase_path: str) -> Optional[str]:
+    """
+    Auto-discover configuration file in standard locations.
+
+    Search order:
+    1. lynx.toml in current directory
+    2. lynx.toml in codebase directory
+    3. pyproject.toml in current directory (if has [tool.lynx])
+    4. pyproject.toml in codebase directory (if has [tool.lynx])
+
+    Returns:
+        Path to discovered config file, or None if not found
+    """
+    import os
+
+    # Get directories to search
+    if Path(codebase_path).is_file():
+        # Codebase is a file, search its parent directory
+        search_dirs = [Path(codebase_path).parent]
+    else:
+        search_dirs = [Path.cwd(), Path(codebase_path)]
+
+    config_files = [
+        'lynx.toml',
+        'lynx.json',
+        'lynx.config.toml',
+        'lynx.config.json',
+    ]
+
+    pyproject_files = ['pyproject.toml']
+
+    for search_dir in search_dirs:
+        # Skip if directory doesn't exist
+        if not search_dir.exists():
+            continue
+
+        # Check for lynx config files
+        for config_file in config_files:
+            config_path = search_dir / config_file
+            if config_path.exists():
+                # Note: logger may not be available yet, just return the path
+                return str(config_path)
+
+        # Check for pyproject.toml with [tool.lynx]
+        for pyproject in pyproject_files:
+            pyproject_path = search_dir / pyproject
+            if pyproject_path.exists():
+                try:
+                    if pyproject_path.suffix == '.toml':
+                        try:
+                            import tomllib
+                            with open(pyproject_path, 'rb') as f:
+                                data = tomllib.load(f)
+                        except ImportError:
+                            import tomli
+                            with open(pyproject_path, 'rb') as f:
+                                data = tomli.load(f)
+                    else:
+                        import json
+                        with open(pyproject_path, 'r') as f:
+                            data = json.load(f)
+
+                    # Check for [tool.lynx] section
+                    if 'tool' in data and 'lynx' in data['tool']:
+                        return str(pyproject_path)
+                except Exception:
+                    continue
+
+    return None
+
 def main() -> None:
     """Main CLI entry point with comprehensive functionality."""
     parser = argparse.ArgumentParser(
@@ -314,11 +384,11 @@ Configuration Types:
     )
     
     args = parser.parse_args()
-    
-    # Setup logging
+
+    # Setup logging first (before any code that might use logger)
     setup_logging(args.log_level)
     logger = logging.getLogger(__name__)
-    
+
     try:
         # Handle utility commands first
         if args.list_plugins:
@@ -351,13 +421,18 @@ Configuration Types:
         
         # Load or create configuration
         config = None
-        
+
+        # Auto-discover config file if not explicitly provided
+        config_file = args.config_file
+        if not config_file:
+            config_file = _discover_config_file(args.codebase_path)
+
         if args.auto_config:
             config = handle_auto_config(args.codebase_path, args.save_config)
-        elif args.config_file and Path(args.config_file).exists():
-            logger.info(f"Loading configuration from: {args.config_file}")
+        elif config_file and Path(config_file).exists():
+            logger.info(f"Loading configuration from: {config_file}")
             try:
-                config_dict = lynx.load_config_file(args.config_file)
+                config_dict = lynx.load_config_file(config_file)
                 config = CodexConfig.from_dict(config_dict)
             except Exception as e:
                 logger.error(f"Failed to load config: {e}")

@@ -44,7 +44,10 @@ dependencies = [
 # Developer tooling
 dev = ["pytest>=7.0", "black>=24.0", "isort>=5.12", "flake8>=6.1"]
 
-# Optional integration extras (Dynamiq integration lives under lynx.integrations/*)
+# TOML config file support
+toml = ["tomli>=2.0; python_version<'3.11'"]
+
+# Optional integration extras (Dynamiq integration lives under lynx.integrations.*)
 integrations = ["dynamiq"]
 
 [project.urls]
