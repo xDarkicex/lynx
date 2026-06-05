@@ -40,3 +40,6 @@ master.txt
 lynx-config*.json
 lynx.toml
 *.lynx.toml
+
+# Claude rules
+CLAUDE.md
