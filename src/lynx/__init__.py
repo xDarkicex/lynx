@@ -8,12 +8,12 @@ from .exceptions import LynxError, ConfigError, ProcessingError
 from .utils import (
     # Configuration management
     create_default_config_template,
-    create_config_from_environment, 
+    create_config_from_environment,
     get_recommended_config_for_codebase,
     load_config_file,
     validate_config,
     merge_configs,
-    
+
     # File and token utilities
     FileInfo,
     count_tokens,
@@ -24,9 +24,58 @@ from .utils import (
     detect_language,
     is_text_file
 )
+from .oauth import OAuthManager, OpenAIOAuthProvider
 
 __version__ = "1.0.0"
 __author__ = "Gentry Rolofson"
+
+# Module-level OAuth manager for convenience functions
+_oauth_manager = OAuthManager()
+
+
+def login(provider: str = "openai", client_id: str = None) -> None:
+    """
+    Authenticate with an OAuth provider.
+
+    Args:
+        provider: OAuth provider name (default: "openai")
+        client_id: OAuth client ID (required for OpenAI)
+
+    Example:
+        >>> import lynx
+        >>> lynx.login("openai", client_id="your-client-id")
+    """
+    if provider == "openai":
+        if not client_id:
+            raise ValueError("client_id is required for OpenAI OAuth")
+        provider_impl = OpenAIOAuthProvider(client_id=client_id)
+        _oauth_manager.register(provider_impl)
+        _oauth_manager.login_interactive(provider)
+    else:
+        raise ValueError(f"Unsupported OAuth provider: {provider}")
+
+
+def logout(provider: str = "openai") -> None:
+    """
+    Log out from an OAuth provider by removing stored credentials.
+
+    Args:
+        provider: OAuth provider name (default: "openai")
+    """
+    _oauth_manager.logout(provider)
+
+
+def get_token(provider: str = "openai") -> str:
+    """
+    Get a valid access token for an OAuth provider.
+
+    Args:
+        provider: OAuth provider name (default: "openai")
+
+    Returns:
+        Valid access token, or empty string if not authenticated
+    """
+    return _oauth_manager.get_token(provider) or ""
 
 # Main entry point function for functional usage
 def summarize(codebase_path: str, config=None, **kwargs):
@@ -201,16 +250,19 @@ def validate_setup():
 __all__ = [
     # Main classes and functions
     'Codex', 'summarize', 'init_config', 'quick_start', 'validate_setup',
-    
+
+    # OAuth functions
+    'login', 'logout', 'get_token',
+
     # Configuration utilities
     'create_default_config_template', 'create_config_from_environment',
-    'get_recommended_config_for_codebase', 'load_config_file', 
+    'get_recommended_config_for_codebase', 'load_config_file',
     'validate_config', 'merge_configs',
-    
+
     # File and processing utilities
     'FileInfo', 'count_tokens', 'estimate_tokens', 'get_model_context_limit',
     'scan_directory', 'truncate_text', 'detect_language', 'is_text_file',
-    
+
     # Exceptions
     'LynxError', 'ConfigError', 'ProcessingError'
 ]

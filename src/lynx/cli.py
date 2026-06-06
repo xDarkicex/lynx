@@ -87,10 +87,10 @@ def analyze_codebase(codebase_path: str) -> None:
 def validate_environment() -> None:
     """Validate the environment setup and show status."""
     status = lynx.validate_setup()
-    
+
     print("🔍 Lynx Environment Status")
     print("=" * 30)
-    
+
     if status["api_keys_found"]:
         print("✅ API Keys Found:")
         for key_info in status["api_keys_found"]:
@@ -98,19 +98,57 @@ def validate_environment() -> None:
     else:
         print("❌ No API keys found in environment variables")
         print("   Set one of: PPLX_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY")
-    
+
     if status["missing_dependencies"]:
         print(f"\n⚠️  Missing Dependencies:")
         for dep in status["missing_dependencies"]:
             print(f"   • {dep}")
     else:
         print(f"\n✅ All dependencies installed")
-    
+
     if status["ready"]:
         print(f"\n🎉 Lynx is ready to use!")
     else:
         print(f"\n❌ Setup incomplete - please install dependencies and set API keys")
-    
+
+    print(f"\nFor help getting started, run: lynx --help")
+
+
+def handle_login(provider: str, client_id: str) -> None:
+    """Handle OAuth login command."""
+    try:
+        print(f"🔐 Starting OAuth login for {provider}...")
+        lynx.login(provider=provider, client_id=client_id)
+        print(f"✅ Successfully authenticated with {provider}")
+        print(f"   Token stored in OS keychain")
+    except Exception as e:
+        print(f"❌ Login failed: {e}")
+        sys.exit(1)
+
+
+def handle_logout(provider: str) -> None:
+    """Handle OAuth logout command."""
+    try:
+        lynx.logout(provider=provider)
+        print(f"✅ Logged out from {provider}")
+        print(f"   Token removed from OS keychain")
+    except Exception as e:
+        print(f"❌ Logout failed: {e}")
+        sys.exit(1)
+
+
+def handle_status() -> None:
+    """Show OAuth authentication status."""
+    print("🔐 Lynx OAuth Status")
+    print("=" * 30)
+
+    # Check OpenAI OAuth status
+    token = lynx.get_token("openai")
+    if token:
+        print("✅ OpenAI: Authenticated (token available)")
+    else:
+        print("❌ OpenAI: Not authenticated")
+
     print(f"\nFor help getting started, run: lynx --help")
 
 def handle_auto_config(codebase_path: str, save_config: Optional[str] = None) -> CodexConfig:
@@ -218,7 +256,7 @@ Examples:
   # Generate different types of configs
   lynx --create-config config.json --config-type multi-model
   lynx --create-config minimal.json --config-type minimal
-  
+
   # Use existing config file
   lynx /path/to/codebase config.json
 
@@ -228,6 +266,11 @@ Examples:
   # Validate environment setup
   lynx --validate-env
 
+  # OAuth authentication (browser-based login)
+  lynx --login --client-id your-client-id
+  lynx --logout
+  lynx --status
+
   # Plugin management
   lynx --list-plugins
   lynx /path/to/codebase --enable-plugins
@@ -235,7 +278,7 @@ Examples:
 
 Environment Variables:
   PPLX_API_KEY or PERPLEXITY_API_KEY - Perplexity API key
-  OPENAI_API_KEY - OpenAI API key  
+  OPENAI_API_KEY - OpenAI API key
   ANTHROPIC_API_KEY - Anthropic API key
 
 Configuration Types:
@@ -382,6 +425,40 @@ Configuration Types:
         action='version',
         version=f'Lynx Codex v{lynx.__version__}'
     )
+
+    # OAuth commands
+    oauth_parser = argparse.ArgumentParser(add_help=False)
+    oauth_parser.add_argument(
+        '--provider',
+        default='openai',
+        choices=['openai'],
+        help='OAuth provider (default: openai)'
+    )
+
+    login_group = parser.add_argument_group('OAuth Login')
+    login_group.add_argument(
+        '--login',
+        action='store_true',
+        help='Login with OAuth authentication'
+    )
+    login_group.add_argument(
+        '--client-id',
+        help='OAuth client ID (required for --login)'
+    )
+
+    logout_group = parser.add_argument_group('OAuth Logout')
+    logout_group.add_argument(
+        '--logout',
+        action='store_true',
+        help='Logout from OAuth provider'
+    )
+
+    status_group = parser.add_argument_group('OAuth Status')
+    status_group.add_argument(
+        '--status',
+        action='store_true',
+        help='Show OAuth authentication status'
+    )
     
     args = parser.parse_args()
 
@@ -411,7 +488,22 @@ Configuration Types:
         if args.analyze:
             analyze_codebase(args.analyze)
             return
-        
+
+        # Handle OAuth commands
+        if args.login:
+            if not args.client_id:
+                parser.error("--client-id is required with --login")
+            handle_login(args.provider, args.client_id)
+            return
+
+        if args.logout:
+            handle_logout(args.provider)
+            return
+
+        if args.status:
+            handle_status()
+            return
+
         # Validate required arguments for main analysis
         if not args.codebase_path:
             parser.error("codebase_path is required (unless using utility commands)")
