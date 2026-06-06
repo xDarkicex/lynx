@@ -26,8 +26,8 @@ from .utils import (
 )
 from .oauth import OAuthManager, OpenAIOAuthProvider
 
-__version__ = "1.0.0"
-__author__ = "Gentry Rolofson"
+__version__ = "1.0.3"
+__author__ = "xDarkicex"
 
 # Module-level OAuth manager for convenience functions
 _oauth_manager = OAuthManager()

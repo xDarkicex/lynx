@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lynx-codex"
-version = "1.0.1"
+version = "1.0.3"
 description = "Lynx Codex: AI-powered codebase summarization with multi-model fallback."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-authors = [{ name = "Gentry Rolofson", email = "grolofson@xdarkicex.codes" }]
+authors = [{ name = "xDarkicex", email = "support@xdarkicex.codes" }]
 keywords = [
     "code summarization",
     "AI",
