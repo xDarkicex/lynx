@@ -45,7 +45,7 @@ from .base import (
     HookPoint
 )
 
-from .manager import PluginManager
+from .manager import PluginManager, PluginCycleError
 from .registry import REGISTRY, PluginRegistry
 
 # Import built-in plugins
@@ -350,9 +350,10 @@ __all__ = [
     
     # Exceptions
     "CorePluginError",
-    "PluginExecutionError", 
+    "PluginExecutionError",
     "PluginManagerError",
     "HookExecutionError",
+    "PluginCycleError",
 ]
 
 logger.debug(f"Core plugin system v{__version__} loaded with {len(REGISTRY.available())} plugins")

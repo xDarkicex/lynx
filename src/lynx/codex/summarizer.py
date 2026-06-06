@@ -31,10 +31,13 @@ class CodexSummarizer:
         # Initialize plugin system
         if config.plugin_system.enabled:
             enabled_plugins = config.get_enabled_plugins()
-            plugin_options = {name: config.plugin_system.plugins[name].options 
-                            for name in enabled_plugins 
+            plugin_options = {name: config.plugin_system.plugins[name].options
+                            for name in enabled_plugins
                             if name in config.plugin_system.plugins}
-            self.plugin_manager = PluginManager.from_config(enabled_plugins, plugin_options)
+            plugin_deps = {name: config.plugin_system.plugins[name].dependencies
+                          for name in enabled_plugins
+                          if name in config.plugin_system.plugins}
+            self.plugin_manager = PluginManager.from_config(enabled_plugins, plugin_options, plugin_deps)
         else:
             self.plugin_manager = None
             
