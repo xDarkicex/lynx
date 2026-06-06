@@ -160,7 +160,7 @@ class CodexSummarizer:
                     file_summaries[file_info.relative_path] = summary
                     self.stats['files_processed'] += 1
                     
-                    logger.debug(f"Processed: {file_info.relative_path}")
+                    logger.info(f"Completed: {file_info.relative_path}")
                     
                 except Exception as e:
                     error_msg = f"Failed to process {file_info.relative_path}: {e}"
@@ -173,6 +173,7 @@ class CodexSummarizer:
     def _process_single_file(self, file_info: FileInfo, ctx: PluginContext) -> str:
         """Process a single file with plugin hooks."""
         try:
+            logger.info(f"Processing file: {file_info.relative_path}")
             # Read file content
             with open(file_info.path, 'r', encoding=file_info.encoding) as f:
                 content = f.read()
@@ -245,7 +246,8 @@ class CodexSummarizer:
         
         # Process chunks with enhanced context from plugins
         chunk_summaries = []
-        for chunk in chunks:
+        total_chunks = len(chunks)
+        for i, chunk in enumerate(chunks, 1):
             # Update context for this chunk
             chunk_ctx = PluginContext(config=self.config)
             chunk_ctx.file_info = file_info
@@ -263,6 +265,8 @@ class CodexSummarizer:
                 chunk_type=chunk.chunk_type,
                 metadata=chunk.metadata
             )
+
+            logger.info(f"  Chunk {i}/{total_chunks}: lines {chunk.start_line}-{chunk.end_line}")
             
             # BEFORE_AI_REQUEST hook for chunk
             chunk_ctx.request = request
