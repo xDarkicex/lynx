@@ -94,7 +94,7 @@ class PerplexityProvider(AIProvider):
         )
 
 class OpenAIProvider(AIProvider):
-    """OpenAI provider implementation (supports custom endpoints like MiniMax, DeepSeek)."""
+    """OpenAI provider implementation (supports custom endpoints like MiniMax, DeepSeek, Ollama)."""
 
     def _initialize_llm(self) -> BaseLanguageModel:
         if ChatOpenAI is None:
@@ -103,9 +103,22 @@ class OpenAIProvider(AIProvider):
         kwargs = {
             'model': self.model_config.model,
             'temperature': self.model_config.temperature,
-            'openai_api_key': self.model_config.get_api_key(),
             'max_tokens': self.model_config.max_tokens
         }
+
+        # Get API key - for Ollama, use dummy key since it doesn't need auth
+        api_key = self.model_config.get_api_key()
+        if self.model_config.provider == 'ollama':
+            # Ollama doesn't require API key, use placeholder
+            kwargs['openai_api_key'] = api_key or 'ollama'
+        else:
+            # Other providers need real API key
+            if not api_key:
+                raise AIInterfaceError(
+                    f"No API key found for provider '{self.model_config.provider}'. "
+                    f"Set {self.model_config.provider.upper()}_API_KEY environment variable."
+                )
+            kwargs['openai_api_key'] = api_key
 
         # Get base_url from model config (via provider registry or override)
         base_url = self.model_config.get_base_url()
