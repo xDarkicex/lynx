@@ -14,6 +14,50 @@ import tiktoken
 
 logger = logging.getLogger(__name__)
 
+
+def _is_excluded(path: Path, exclude_patterns: Set[str]) -> bool:
+    """Check if a path should be excluded by checking any path component.
+
+    This properly handles patterns like '*/.venv/*' by checking if any
+    directory in the path matches the pattern name (e.g., '.venv').
+
+    Patterns with '*/' prefix check ALL path components for that directory name.
+    Patterns without '*/' (like '*test*') only check the filename.
+    """
+    filename = path.name  # Last component = filename
+
+    for pattern in exclude_patterns:
+        # Pattern has */ prefix - check if any path component matches the directory name
+        # e.g., */.venv/* -> check if any component is '.venv'
+        if pattern.startswith('*/') and pattern.endswith('/*'):
+            dir_name = pattern[2:-2]  # Remove */ from start and /* from end
+            for part in path.parts:
+                if part == dir_name:
+                    return True
+
+        # Pattern has */ prefix but no /* suffix - check all path components
+        # e.g., */.env* -> check if any component matches .env*
+        elif pattern.startswith('*/') and '/*' not in pattern:
+            rest = pattern[2:]
+            for part in path.parts:
+                if _fnmatch_part(part, rest):
+                    return True
+
+        # Pattern is a filename pattern (no */) - only check the filename
+        # e.g., *test* -> check if filename contains 'test'
+        elif '/*' not in pattern:
+            if _fnmatch_part(filename, pattern):
+                return True
+
+    return False
+
+
+def _fnmatch_part(name: str, pattern: str) -> bool:
+    """Match a name against a pattern, where pattern is a single-component glob."""
+    import fnmatch
+    return fnmatch.fnmatch(name, pattern)
+
+
 @dataclass
 class FileInfo:
     """Metadata for processed files."""
@@ -780,7 +824,7 @@ def scan_directory(root_path: str,
             
         # Check exclusion patterns
         rel_path = file_path.relative_to(root)
-        if any(rel_path.match(pattern) for pattern in exclude_patterns):
+        if _is_excluded(rel_path, exclude_patterns):
             continue
             
         # Check file size
