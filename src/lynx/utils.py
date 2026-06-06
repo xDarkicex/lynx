@@ -796,6 +796,7 @@ def scan_directory(root_path: str,
         '*/.git/*', '*/.svn/*', '*/.hg/*', '*/.bzr/*', '*/_darcs/*',
         # Package manager artifacts
         '*/node_modules/*', '*/.venv/*', '*/venv/*', '*/env/*', '*/.env/*',
+        '*/lynx-env/*', '*/.conda/*', '*/.pix/*',
         '*/.direnv/*', '*/.uv/*', '*/vendor/*', '*/.pnpm-store/*',
         # Build and dependency outputs
         '*/__pycache__/*', '*/target/*', '*/build/*', '*/dist/*',
