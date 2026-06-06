@@ -1,6 +1,6 @@
 # Lynx Codex
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/xDarkicex/lynx)
+[![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)](https://github.com/xDarkicex/lynx)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
 

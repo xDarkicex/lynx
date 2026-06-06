@@ -26,7 +26,7 @@ from .utils import (
 )
 from .oauth import OAuthManager, OpenAIOAuthProvider
 
-__version__ = "1.0.3"
+__version__ = "1.0.9"
 __author__ = "xDarkicex"
 
 # Module-level OAuth manager for convenience functions
