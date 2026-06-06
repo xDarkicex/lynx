@@ -1,11 +1,29 @@
 """OAuth provider interface for Lynx Codex authentication."""
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Protocol, runtime_checkable
 import os
 
-import keyring
+logger = logging.getLogger(__name__)
+
+# Try to import keyring, but allow fallback if no backend available
+try:
+    import keyring
+    _KEYRING_AVAILABLE = True
+    _KEYRING_ERROR = None
+    try:
+        # Test if keyring has a working backend
+        keyring.get_password("lynx_codex_test", "test")
+    except Exception as e:
+        _KEYRING_AVAILABLE = False
+        _KEYRING_ERROR = str(e)
+        logger.warning(f"Keyring backend not available: {_KEYRING_ERROR}. OAuth tokens will not be persisted.")
+except ImportError:
+    keyring = None
+    _KEYRING_AVAILABLE = False
+    _KEYRING_ERROR = "keyring package not installed"
 
 
 @dataclass
@@ -46,6 +64,26 @@ class TokenStorage(ABC):
     def is_expired(self, provider_name: str) -> bool:
         """Check if stored token is expired or invalid."""
         pass
+
+
+class NullStorage(TokenStorage):
+    """Fallback storage that stores tokens in memory only. Tokens are lost on restart."""
+
+    def __init__(self):
+        self._tokens = {}
+
+    def save(self, provider_name: str, tokens: TokenPair) -> None:
+        logger.warning("Using in-memory token storage. Tokens will be lost on restart. Install keyring for persistent storage.")
+        self._tokens[provider_name] = tokens
+
+    def load(self, provider_name: str) -> Optional[TokenPair]:
+        return self._tokens.get(provider_name)
+
+    def delete(self, provider_name: str) -> None:
+        self._tokens.pop(provider_name, None)
+
+    def is_expired(self, provider_name: str) -> bool:
+        return provider_name not in self._tokens
 
 
 class KeyringStorage(TokenStorage):
@@ -236,7 +274,13 @@ class OAuthManager:
 
     def __init__(self, storage: Optional[TokenStorage] = None):
         self._providers: dict[str, OAuthProvider] = {}
-        self._storage = storage or KeyringStorage()
+        if storage:
+            self._storage = storage
+        elif not _KEYRING_AVAILABLE:
+            logger.warning("Keyring not available. Using in-memory token storage. Tokens will be lost on restart.")
+            self._storage = NullStorage()
+        else:
+            self._storage = KeyringStorage()
 
     def register(self, provider: OAuthProvider) -> None:
         self._providers[provider.name] = provider

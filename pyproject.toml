@@ -7,7 +7,7 @@ name = "lynx-codex"
 version = "1.0.3"
 description = "Lynx Codex: AI-powered codebase summarization with multi-model fallback."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "xDarkicex", email = "support@xdarkicex.codes" }]
 keywords = [
