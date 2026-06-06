@@ -114,16 +114,30 @@ def validate_environment() -> None:
     print(f"\nFor help getting started, run: lynx --help")
 
 
-def handle_login(provider: str, client_id: str) -> None:
+def handle_login(provider: str, client_id: str, headless: bool = False) -> None:
     """Handle OAuth login command."""
     try:
-        print(f"🔐 Starting OAuth login for {provider}...")
-        lynx.login(provider=provider, client_id=client_id)
+        if headless:
+            print(f"🔐 Starting headless OAuth login for {provider}...")
+            _handle_login_headless(provider, client_id)
+        else:
+            print(f"🔐 Starting OAuth login for {provider}...")
+            lynx.login(provider=provider, client_id=client_id)
         print(f"✅ Successfully authenticated with {provider}")
         print(f"   Token stored in OS keychain")
     except Exception as e:
         print(f"❌ Login failed: {e}")
         sys.exit(1)
+
+
+def _handle_login_headless(provider: str, client_id: str) -> None:
+    """Handle headless OAuth login (manual code paste for SSH/remote)."""
+    from lynx.oauth import OAuthManager, OpenAIOAuthProvider
+
+    manager = OAuthManager()
+    provider_impl = OpenAIOAuthProvider(client_id=client_id)
+    manager.register(provider_impl)
+    manager.login_headless(provider)
 
 
 def handle_logout(provider: str) -> None:
@@ -439,7 +453,12 @@ Configuration Types:
     login_group.add_argument(
         '--login',
         action='store_true',
-        help='Login with OAuth authentication'
+        help='Login with OAuth authentication (opens browser)'
+    )
+    login_group.add_argument(
+        '--headless',
+        action='store_true',
+        help='Use headless login (manual code paste, for SSH/remote environments)'
     )
     login_group.add_argument(
         '--client-id',
@@ -493,7 +512,7 @@ Configuration Types:
         if args.login:
             if not args.client_id:
                 parser.error("--client-id is required with --login")
-            handle_login(args.provider, args.client_id)
+            handle_login(args.provider, args.client_id, args.headless)
             return
 
         if args.logout:
