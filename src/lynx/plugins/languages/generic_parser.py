@@ -1,6 +1,7 @@
 """Generic fallback parser for languages without specific implementations."""
 
 import re
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 from .base import BaseLanguageParser, ParsedElement, DependencyInfo, ElementType, Visibility
 

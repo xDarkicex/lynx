@@ -226,8 +226,30 @@ class CodexConfig:
     # File filtering
     include_patterns: Set[str] = field(default_factory=lambda: {'*.py', '*.rs', '*.go', '*.js', '*.ts'})
     exclude_patterns: Set[str] = field(default_factory=lambda: {
-        '*/__pycache__/*', '*/node_modules/*', '*/.git/*',
-        '*/target/*', '*/build/*', '*/dist/*', '*test*'
+        # Version control
+        '*/.git/*', '*/.svn/*', '*/.hg/*', '*/.bzr/*', '*/_darcs/*',
+        # Package manager artifacts
+        '*/node_modules/*', '*/.venv/*', '*/venv/*', '*/env/*', '*/.env/*',
+        '*/.direnv/*', '*/.uv/*', '*/vendor/*', '*/.pnpm-store/*',
+        # Build and dependency outputs
+        '*/__pycache__/*', '*/target/*', '*/build/*', '*/dist/*',
+        '*/.gradle/*', '*/.m2/*', '*/.cargo/*', '*/.nuget/*',
+        # Test and coverage
+        '*/.pytest_cache/*', '*/.tox/*', '*/.nox/*', '*/coverage/*',
+        '*/.nyc_output/*', '*/.jacoco/*', '*/.hypothesis/*',
+        # Framework/cache dirs
+        '*/.next/*', '*/.nuxt/*', '*/.svelte-kit/*', '*/.turbo/*',
+        '*/.parcel-cache/*', '*/.cache/*', '*/__pypackages__/*',
+        # IDE and editor dirs
+        '*/.vscode/*', '*/.idea/*', '*/.vs/*', '*/.atom/*',
+        '*/.sublime/*', '*/.emacs.d/*', '*/.vim/*', '*/.nvim/*',
+        # Platform artifacts
+        '*/.DS_Store/*', '*/._*', '*/Thumbs.db', '*/desktop.ini',
+        # Lock files
+        '*/package-lock.json', '*/yarn.lock', '*/pnpm-lock.yaml',
+        '*/poetry.lock', '*/Cargo.lock', '*/go.sum', '*/composer.lock',
+        # Misc
+        '*/.gitignore', '*/.env*', '*/*.log', '*/*.tmp', '*test*'
     })
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     
