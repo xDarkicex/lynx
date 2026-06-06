@@ -43,3 +43,6 @@ lynx.toml
 
 # Claude rules
 CLAUDE.md
+
+# Virtual environments (additional)
+lynx-env/
