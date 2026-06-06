@@ -21,26 +21,27 @@ class HookPoint(Enum):
     # Scanning phase
     BEFORE_SCAN = auto()
     AFTER_SCAN = auto()
-    
+
     # Chunking phase
     BEFORE_CHUNK = auto()
     AFTER_CHUNK = auto()
-    
+
     # AI processing phase (per-file)
     BEFORE_AI_REQUEST = auto()
     AFTER_AI_RESPONSE = auto()
     ON_FILE_COMPLETE = auto()  # After entire file processed (all chunks done)
     ON_CHUNK_COMPLETE = auto()  # After each chunk finishes
-    
+    ON_TOKEN_USAGE = auto()  # Per-file token accounting (after ON_FILE_COMPLETE)
+
     # Aggregation phase
     BEFORE_AGGREGATE = auto()
     DURING_AGGREGATE = auto()  # Streaming callback during aggregation
     AFTER_AGGREGATE = auto()
-    
+
     # Output phase
     BEFORE_OUTPUT = auto()
     AFTER_OUTPUT = auto()
-    
+
     # Error handling
     ON_ERROR = auto()
 
@@ -55,6 +56,10 @@ class PluginContext:
     file_summaries: Optional[Dict[str, str]] = None
     master_summary: Optional[str] = None
     output_path: Optional[str] = None
+    # Per-file completion data (set during ON_FILE_COMPLETE)
+    file_summary: Optional[str] = None
+    file_time: Optional[float] = None
+    file_tokens: Optional[int] = None
     state: Dict[str, Any] = field(default_factory=dict)  # plugin-shared scratchpad
 
 @runtime_checkable
