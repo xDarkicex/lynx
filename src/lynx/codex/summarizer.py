@@ -246,7 +246,7 @@ class CodexSummarizer:
 
         return file_summaries
     
-    def _process_single_file(self, file_info: FileInfo, ctx: PluginContext) -> tuple:
+    def _process_single_file(self, file_info: FileInfo, shared_ctx: PluginContext) -> tuple:
         """Process a single file with plugin hooks. Returns (summary, processing_time, tokens_used)."""
         file_start = datetime.now()
         try:
@@ -260,9 +260,11 @@ class CodexSummarizer:
                 elapsed = (datetime.now() - file_start).total_seconds()
                 return "Empty file", elapsed, 0
 
-            # Update context for this file
+            # Create a thread-safe copy of context for this file
+            ctx = PluginContext(config=shared_ctx.config)
             ctx.file_info = file_info
             ctx.content = content
+            ctx.state = shared_ctx.state.copy()  # Copy state to avoid race conditions
 
             # Check if file needs chunking
             primary_model = self.config.get_primary_model().model
